@@ -52,13 +52,13 @@ View(file_cor)
 COR_comp <- cor(file_cor,file_cor, use="pairwise", method="spearman")
 CorrPlot <- cor.plot(COR_comp,numbers=TRUE,colors=TRUE,n=100,main="Blood-T2* correlation",zlim=c(-1,1), show.legend=TRUE, diag=FALSE, labels=NULL,n.legend=10,keep.par=TRUE,select=NULL,pval=c(0.001, 0.01, 0.05),cuts=c(.001,.01),cex.axis=0.5,stars=TRUE) 
 
-#DO a regression
+s#DO a regression
 x <- file_cor$Hct_percent
 y <- file_cor$T2star_amyg_L
-x_plus <- x+file_cor#$age+file_cor$sex
-relation <- lm(x_plus~y)
+x_plus <- x#+file_cor$age+file_cor$sex
+relation <- lm(y~x_plus)
 # Plot the chart.
-plot(y,x_plus,col = "blue",main = "T2star_amyg_L & Hct_percent",
+plot(x_plus,y,col = "blue",main = "T2star_amyg_L & Hct_percent",
      abline(relation),xlab = "Hct_percent",ylab = "T2star_amyg_L")
 
 # DO regression over all areas
@@ -115,3 +115,6 @@ capture.output(print.psych(PCA, cut=0.3, sort = TRUE), file="PCA_reduced.txt")
 PCAscores <- data.frame(PCA$scores)
 PCAscores$twuid <- rownames(PCAscores)
 save(PCAscores, file="DatafilePCA_noNA.RData")
+
+# Save altered and optimized data file
+write.csv(file_fin,'final_brain_vol_info.csv')
