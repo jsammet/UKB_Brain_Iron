@@ -3,13 +3,31 @@ import os
 import numpy as np
 import pandas as pd
 
-import src.model
-import src.dataloader
-import src.file_read as file_read
+from src.model import Iron_CNN
+from src.dataset import swi_dataset
+from src.file_read import file_read
 
-input_path='final_brain_vil_info.csv'
+image_path='path/to/swi/images'
+label_path='path/to/swi/label.csv'
+params = {
+    'batch_size': 1,
+    'shuffle': False,
+    'num_workers': 1,
+    'channels': [32, 64, 128, 256, 256, 64]
+}
 
-input_file=file_read(input_path)
+# Create dataset
+dataset=swi_dataset(image_path,label_path)
+# Create model
+model=Iron_CNN(params['channels'])
 
-dataloader=src.dataloader(input_file)
+#create training, validation and test set
+#TODO here
+
+#train model
+#TODO create in seperate file
+
+# evaluate on test set
+#TODO here
+
 
