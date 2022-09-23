@@ -7,8 +7,11 @@ from . import network_blocks as nb
 class Iron_NN(nn.Module):
     """
     3D CNN implementation for Iron level prediction based on local brain MRI 
+
+    Image input dimensions: 256 x 288 x48
+
     """
-    def __init__(self, channel_number=[32, 64, 128, 256, 256, 64], bilinear=False):
+    def __init__(self, channel_number=[32, 64, 128, 256, 256, 64], dropout=True):
         super().__init__()
         ndims = len(inshape)
         assert ndims in [3], 'ndims should be 3. found: %d' % ndims
@@ -21,7 +24,7 @@ class Iron_NN(nn.Module):
             else:
                 in_channel = channel_number[i-1]
             out_channel = channel_number[i]
-            if i < n_layer-1:
+            if i < n_layer-2:
                 self.convolve_.add_module('conv_%d' % i,
                                                   Conv_Block(in_channel,
                                                                   out_channel,
@@ -33,10 +36,12 @@ class Iron_NN(nn.Module):
                                                                   out_channel,
                                                                   kernel_size=1,
                                                                   padding=0,
-                                                                  final=True))
+                                                                  no_pad=True))
         self.classifier = nn.Sequential()
-        avg_shape = [5, 6, 5]
-        self.finalize.add_module('average_pool', nn.AvgPool3d(avg_shape))
+        avg_shape = [16, 18, 3] # Image shape after Convolutions
+        self.classifier.add_module('average_pool', nn.AvgPool3d(avg_shape))
+        if dropout is True:
+            self.classifier.add_module('dropout', nn.Dropout(0.5))
         in_channel = channel_number[-1]
         out_channel = output_dim
         self.classifier.add_module('conv_%d' % i,
@@ -52,9 +57,9 @@ class Iron_NN(nn.Module):
 
 class Conv_Block(nn.Module):
     """(convolution => ReLU)"""
-    def __init__(self, in_channels, out_channels, kernel_size=3, padding=1, pool_stride=2, bias=False, final=False):
+    def __init__(self, in_channels, out_channels, kernel_size=3, padding=1, pool_stride=2, bias=False, no_pad=False):
         super().__init__()
-        if final == False:
+        if no_pad == False:
             self.conv_block = nn.Sequential(
                 nn.Conv3d(in_channels, out_channels, kernel_size, padding, bias),
                 nn.BatchNorm3d(out_channel),
