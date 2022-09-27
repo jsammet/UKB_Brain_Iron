@@ -1,6 +1,7 @@
 library(dplyr)
 library(psych)
 library(nFactors)
+library(base)
 
 setwd(dirname(rstudioapi::getSourceEditorContext()$path))
 getwd()
@@ -23,9 +24,9 @@ reduce_file <- full_file %>% select('f.eid','f.31.0.0', "f.21003.2.0",
                                     matches("^f.2503.*.2.0$"), ##	Median T2star areas
                                     matches("^f.2502.*.2.0$"), ##	Median T2star areas
                                     matches("^f.42018.*.2.0$"),
-                                    "f.25756.2.0",	##	Scanner lateral (X) brain position	T1 structural brain MRI  
-                                    "f.25758.2.0",	##	Scanner longitudinal (Z) brain position	T1 structural brain MRI  
-                                    "f.25759.2.0",	##	Scanner table position	T1 structural brain MRI  
+                                    "f.25756.2.0",	##	Scanner lateral (X) brain position	T1 structural brain MRI
+                                    "f.25758.2.0",	##	Scanner longitudinal (Z) brain position	T1 structural brain MRI
+                                    "f.25759.2.0",	##	Scanner table position	T1 structural brain MRI
                                     "f.25757.2.0")	##	Scanner transverse (Y) brain position	## Date of all cause dementia report
 View(reduce_file)
 
@@ -36,7 +37,7 @@ View(file_noNA)
 file_fin <- rename(file_noNA,'ID' = 'f.eid', 'sex'='f.31.0.0','age'="f.21003.2.0","mean_corp_hb"="f.30050.2.0", "mean_corp_hb_concent"= "f.30060.2.0",
                                     "mean_corp_vol" = "f.30040.2.0", "Hct_percent"="f.30030.2.0",	"hb_concent"="f.30020.2.0", "erythrocyte_cnt"="f.30010.2.0",
                                     "erythrocyte_dist_wdt"="f.30070.2.0",
-                                    "T2star_acc_L" = "f.25038.2.0", "T2star_acc_R" = "f.25039.2.0", "T2star_amyg_L" = "f.25036.2.0", 
+                                    "T2star_acc_L" = "f.25038.2.0", "T2star_acc_R" = "f.25039.2.0", "T2star_amyg_L" = "f.25036.2.0",
                                     "T2star_amyg_R" = "f.25037.2.0", "T2star_caud_L" = "f.25028.2.0", "T2star_caud_R" = "f.25029.2.0",	##	Median T2star in caudate (right)
                                      "T2star_hipp_L" = "f.25034.2.0",	"T2star_hipp_R" = "f.25035.2.0","T2star_palli_L" = "f.25032.2.0",	##	Median T2star in pallidum (left)
                                      "T2star_palli_R" = "f.25033.2.0", "T2star_put_L" = "f.25030.2.0",	##	Median T2star in putamen (left)
@@ -50,7 +51,7 @@ file_cor <- file_fin %>% select('sex','age',"mean_corp_hb", "mean_corp_hb_concen
 View(file_cor)
 #Associations Heatmap: self correlation
 COR_comp <- cor(file_cor,file_cor, use="pairwise", method="spearman")
-CorrPlot <- cor.plot(COR_comp,numbers=TRUE,colors=TRUE,n=100,main="Blood-T2* correlation",zlim=c(-1,1), show.legend=TRUE, diag=FALSE, labels=NULL,n.legend=10,keep.par=TRUE,select=NULL,pval=c(0.001, 0.01, 0.05),cuts=c(.001,.01),cex.axis=0.5,stars=TRUE) 
+CorrPlot <- cor.plot(COR_comp,numbers=TRUE,colors=TRUE,n=100,main="Blood-T2* correlation",zlim=c(-1,1), show.legend=TRUE, diag=FALSE, labels=NULL,n.legend=10,keep.par=TRUE,select=NULL,pval=c(0.001, 0.01, 0.05),cuts=c(.001,.01),cex.axis=0.5,stars=TRUE)
 
 s#DO a regression
 x <- file_cor$Hct_percent
@@ -89,12 +90,12 @@ for (names_ in colnames(file_cor)) {
 cortest.bartlett(file_cor, n=nrow(file_cor_red)) #should be significant -> error message?
 KMO_UKB<-KMO(file_cor_red); dim(file_cor_red); KMO_UKB #should be >0.5; consider removal of variables <0.5
 
-file_cor_red <- subset(file_cor, select = - c(mean_corp_vol, mean_corp_hb_concent,mean_corp_hb,erythrocyte_dist_wdt)) 
+file_cor_red <- subset(file_cor, select = - c(mean_corp_vol, mean_corp_hb_concent,mean_corp_hb,erythrocyte_dist_wdt))
 
 #Check Number of Components (Scree plot and parallel analysis)
 fitPCA_UKB <- princomp(file_cor_red)
 par(mfrow=c(1,1))
-plot(fitPCA_UKB, type="lines") # scree plot with Eigenvalues 
+plot(fitPCA_UKB, type="lines") # scree plot with Eigenvalues
 eigenvals <- eigen(cor(file_cor_red)) # compute eigenvalues
 par <- parallel(subject=nrow(file_cor_red), var=ncol(file_cor_red), rep=100, cent=0.05)
 Plot <- nScree(x= eigenvals$values, aparallel=par$eigen$qevpea)
@@ -118,3 +119,16 @@ save(PCAscores, file="DatafilePCA_noNA.RData")
 
 # Save altered and optimized data file
 write.csv(file_fin,'final_brain_vol_info.csv')
+
+# Create script to only have table entries where a images exists
+img_list <- list.files(path="../SWI_images")
+swi_imgs <- data.frame(matrix(unlist(img_list), nrow=length(img_list), byrow=TRUE))
+colnames(swi_imgs) <- c('SWI')
+swi_df <- data.frame(do.call('rbind', strsplit(as.character(swi_imgs$SWI),'_')))
+swi_df <- subset(swi_df, select = c(X1))
+colnames(swi_df) <- c('ID')
+swi_df$ID <- as.integer(swi_df$ID)
+
+full_file <- read.csv("final_brain_vol_info.csv")
+swi_joint <- merge(x = swi_df, y = full_file, by = "ID")
+write.csv(swi_joint,'swi_brain_vol_info.csv')
