@@ -1,14 +1,20 @@
-import torch.nn as nn
+import torch
+from torch import nn
 
-def loss_func(x, y):
+class loss_func(nn.Module):
     """Returns K-L Divergence loss
     Different from the default PyTorch nn.KLDivLoss in that
     a) the result is averaged by the 0th dimension (Batch size)
     b) the y distribution is added with a small value (1e-16) to prevent log(0) problem
     """
-    loss_func = nn.KLDivLoss(reduction='sum')
-    y += 1e-16
-    n = y.shape[0]
-    loss = loss_func(x, y) / n
-    #print(loss)
-    return loss
+    def __init__(self, alpha):
+        super().__init__()
+        self.loss =  nn.CrossEntropyLoss() #MSELoss()
+        self.alpha = alpha
+
+    def forward(self,x,y):
+        #std_div = torch.std(x) - torch.std(y)
+        #loss = self.loss(x, y) + self.alpha * std_div
+        #print(loss)
+        loss = self.loss(x,y)
+        return loss

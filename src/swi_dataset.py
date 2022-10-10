@@ -2,8 +2,8 @@ import os
 import pandas as pd
 import nibabel as nib
 import numpy as np
-import torch
 from torch.utils import data
+import torch
 
 class swi_dataset(data.Dataset):
     """
@@ -34,6 +34,13 @@ class swi_dataset(data.Dataset):
         image = np.asarray(nib.load(img_path).get_fdata())
         image = image[np.newaxis, ...]
         # Create label information accordingly
-        label = self.label_file.iloc[index, 1]
+        #label = self.label_file.iloc[index, 1]
+        if self.label_file.iloc[index, 1] >= 31.52:
+            label = torch.tensor([1, 0, 0])
+        elif self.label_file.iloc[index, 1] >= 30.35:
+            label = torch.tensor([0, 1, 0])
+        else:
+            label = torch.tensor([0, 0, 1])
+
         #return both together
-        return torch.tensor(image), label
+        return image, label, self.label_file.iloc[index, 0]

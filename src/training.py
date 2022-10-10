@@ -1,14 +1,17 @@
 import os
 import torch
 import numpy as np
+import pandas as pd
 import time
+import nibabel as nib
 
 from .loss import loss_func
 from torch.utils.data.sampler import RandomSampler, SequentialSampler
 from torch.utils import data
 from torchinfo import summary
 
-def trainer(model, dataset, indices, params):
+
+def trainer(model, dataset, indices, params, optimizer, criterion, scheduler):
     '''
     Contains
     1. split of training set into train and validation
@@ -16,18 +19,13 @@ def trainer(model, dataset, indices, params):
     Returns
     1. Best performing model
     '''
-    # Define parameters
-    torch.manual_seed(42)
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-    criterion = torch.nn.KLDivLoss(reduction='sum')
-    #scheduler = ReduceLROnPlateau(optimizer, 'min')
-    if torch.cuda.is_available():
-        model = model.cuda()
-        model.to(torch.device(params['device']))
-        criterion = criterion.cuda()
-
     # Print network model for good overview
-    #print(summary(model, input_size=(params['batch_size'],1,256,288,48)))
+    print(summary(model, input_size=(params['batch_size'],1,256,288,48)))
+    # Put device correctly
+    device = torch.device(params['device'])
+    model.to(device)
+    criterion.to(device)
+    print("model device train ", next(model.parameters()).get_device())
 
     # Split of indices into train and validate
     dataset_size = len(indices)
@@ -41,45 +39,42 @@ def trainer(model, dataset, indices, params):
     val_sampler = RandomSampler(val_indices)
     val_loader = data.DataLoader(dataset, batch_size=params['batch_size'], sampler=val_sampler, num_workers=params['num_workers'])
     history = {'train_loss': [], 'valid_loss': []}
+    epoch_step_time = []
 
     for epoch in range(0, params['nb_epochs']):
         print("Epoch: {}".format(epoch))
         # save model checkpoint
         if epoch % 20 == 0:
-            torch.save(model.state_dict(),os.path.join(params['model_dir'], '%04d.pt' % epoch))
+            torch.save(model.state_dict(),os.path.join(params['model_dir'], str(params['nb_epochs'])+ \
+            "_"+str(params['lr'])+"_"+str(params['alpha'])+"_"+params['iron_measure']+'%04d.pt' % epoch))
+
 
         print("---------------------------------------------START TRAINING---------------------------------------------")
         step_start_time = time.time()
         model.train()
         train_loss=0.0
-        print('load images from DataLoader')
         # go through once
-        for image, label_true in train_loader:
+        for image, label_true, name in train_loader:
 
-            image = image.float().cuda()
-            label_true = label_true.float().cuda()
-            print('Run model')
+            image = image.float().to(device)
+            label_true = label_true.float().to(device)
             label_pred = model(image)
-            print('end model')
 
             # calculate total loss
-            loss = criterion(label_pred, label_true)
-            loss = loss.cuda()
-            print(loss)
+            loss = criterion(label_pred.squeeze(1), label_true)
+            # print(loss)
             train_loss += loss
 
             # backpropagate and optimize
-            print('def optim')
             optimizer.zero_grad()
-            print('torch autograd')
-            #torch.autograd.grad(loss, image)
             loss.backward()
-            print('oprim step')
             optimizer.step()
-
+        # Print last validation results as example
+        example_diff = torch.sum(torch.sub(label_pred,label_true)).item() / label_pred.size(dim=0)
+        print(f'Result of last training items (avg): \t\t {example_diff}')
         # get compute time
-        history_epoch_loss.append(loss)
         train_loss = train_loss / len(train_loader)
+        print("train_loss: ", train_loss)
         epoch_step_time.append(time.time() - step_start_time)
         history['train_loss'].append(train_loss)
 
@@ -87,53 +82,128 @@ def trainer(model, dataset, indices, params):
         print("---------------------------------------------START VALIDATION---------------------------------------------")
         valid_loss = 0.0
         model.eval()
-
+        with torch.no_grad():
         # go thorugh one batch
-        for image, label_true in val_loader:
+            for image, label_true, name in val_loader:
 
-            image = image.float()
-            label_true = label_true.float()
-            label_pred = model(image)
+                image = image.float().to(device)
+                label_true = label_true.float().to(device)
+                label_pred = model(image)
 
-            # calculate total loss
-            loss = criterion(label_pred, label_true)
-            valid_loss += loss
+                # calculate total loss
+                loss = criterion(label_pred.squeeze(1), label_true)
+                valid_loss += loss
 
-        # Leraning Rate Scheduler
-        #scheduler.step((valid_loss)
+            # Leraning Rate Scheduler
+            scheduler.step((valid_loss))
 
-        # print epoch info
-        valid_loss = valid_loss / len(val_loader)
-        history['valid_loss'].append(valid_loss)
-        print(f'Epoch {epoch} \t\t Training - MSELoss: {train_loss} \t\t Validation - MSELoss: {valid_loss}')
-        epoch_info = 'Epoch %d/%d' % (epoch + 1, nb_epochs)
-        time_info = '%.4f sec/step' % np.mean(epoch_step_time)
-        print(' - '.join((epoch_info, time_info)), flush=True)
+            # Print last validation results as example
+            example_diff = torch.sum(torch.sub(label_pred,label_true)).item() / label_pred.size(dim=0)
+            print(f'Result of last validation items (avg): \t\t {example_diff}')
+            # print epoch info
+            valid_loss = valid_loss / len(val_loader)
+            history['valid_loss'].append(valid_loss)
+            print(f'Epoch {epoch} \t\t Training - MSELoss: {train_loss} \t\t Validation - MSELoss: {valid_loss}')
+            epoch_info = 'Epoch %d/%d' % (epoch + 1, params['nb_epochs'])
+            time_info = '%.4f sec/step' % np.mean(epoch_step_time)
+            print(' - '.join((epoch_info, time_info)), flush=True)
 
       # final model save
-    torch.save(model.state_dict(),os.path.join(params['model_dir'], 'final%04d.pt' % epoch))
-    return model
+    torch.save(model.state_dict(),os.path.join(params['model_dir'], str(params['nb_epochs'])+ \
+        "_"+str(params['lr'])+"_"+str(params['alpha'])+"_"+params['iron_measure']+'final%04d.pt' % epoch))
+    return model, history
 
-def tester(model, dataset, indices, params):
+def tester(model, dataset, indices, params,criterion):
+    # Put model into CUDA
     test_sampler = RandomSampler(indices)
     test_loader = data.DataLoader(dataset, batch_size=params['batch_size'], sampler=test_sampler, num_workers=params['num_workers'])
+    device = torch.device(params['device'])
 
     print("---------------------------------------------START TEST---------------------------------------------")
     test_loss = 0.0
     model.eval()
+    test_pred = []
+    test_true = []
+    test_name = []
+    with torch.no_grad():
     # go through test set
-    for image, label_true in test_loader:
+        for image, label_true, name in test_loader:
 
-        image = image.to(device).float()
-        label_true = label_true.to(device).float()
-        label_pred = model(image)
-        # calculate total loss
-        loss = loss_func(label_pred, label_true)
-        print(loss)
-        test_loss += loss
+            image = image.float().to(device)
+            label_true = label_true.float().to(device)
+            label_pred = model(image)
+            for i in range(len(label_pred)):
+                test_pred.append(torch.argmax(label_pred[i]).item())
+                test_true.append(torch.argmax(label_true[i]).item())
+                test_name.append(name[i].item())
+            # calculate total loss
+            loss = criterion(label_pred.squeeze(1), label_true)
+            print(loss)
+            test_loss += loss
 
+    # Print last test results as example
+    example_diff = torch.sum(torch.sub(label_pred,label_true)).item() / label_pred.size(dim=0)
+    print(f'Result of last test items (avg): \t\t {example_diff}')
     #print test info
     test_loss = test_loss / len(test_loader)
     print(f'Final test result: \t\t Test set loss - MSELoss: {test_loss}')
+
+    df = pd.DataFrame(data={"ID": list(range(len(test_pred))),"Name": test_name, "Prediction": test_pred, "True_Label": test_true})
+    df.to_csv("results/test_3classes_"+str(params['nb_epochs'])+ \
+        "_"+str(params['lr'])+"_"+str(params['alpha'])+"_"+params['iron_measure']+".csv", sep=',',index=False)
+
+    return 0
+
+def test_saliency(model, dataset, indices, params,criterion):
+    """
+    Test function that incldues saliency aps based on grads
+    """
+    # Put model into CUDA
+    test_sampler = RandomSampler(indices)
+    test_loader = data.DataLoader(dataset, batch_size=params['batch_size'], sampler=test_sampler, num_workers=params['num_workers'])
+    device = torch.device(params['device'])
+
+    print("---------------------------------------------START SALIENCY MAP AND TEST---------------------------------------------")
+    test_loss = 0.0
+    model.eval()
+    test_pred = []
+    test_true = []
+    with torch.no_grad():
+    # go through test set
+        for image, label_true, name in test_loader:
+            image = image.float().to(device)
+            label_true = label_true.float().to(device)
+            # Set the requires_grad_ to the image for retrieving gradients
+            image.requires_grad_()
+            label_pred = model(image)
+            # Cath output for saliency map
+            #output_idx = output.argmax()
+            #output_max = output[0, output_idx]
+
+            # Retireve the saliency map and also pick the maximum value from channels on each pixel.
+            # In this case, we look at dim=1. Recall the shape (batch_size, channel, width, height, depth)
+            saliency, _ = torch.max(image.grad.data.abs(), dim=1)
+            saliency = saliency.reshape(256,288,48)[:,:,24]
+            # Visualize the image and the saliency map
+            ni_img = nib.Nifti1Image(saliency.cpu(), affine=np.eye(4))
+            nib.save(ni_img, "results/sal_maps/saliency_"+str(name)+".nii")
+
+            for i in range(len(label_pred)):
+                test_pred.append(label_pred[i].item())
+                test_true.append(label_true[i].item())
+            # calculate total loss
+            loss = criterion(label_pred.squeeze(1), label_true)
+            print(loss)
+            test_loss += loss
+
+    # Print last test results as example
+    example_diff = torch.sum(torch.sub(label_pred,label_true)).item() / label_pred.size(dim=0)
+    print(f'Result of last test items (avg): \t\t {example_diff}')
+    #print test info
+    test_loss = test_loss / len(test_loader)
+    print(f'Final test result: \t\t Test set loss - MSELoss: {test_loss}')
+
+    #df = pd.DataFrame(data={"ID": list(range(len(test_pred))), "Prediction": test_pred, "True_Label": test_true})
+    #df.to_csv("results/test_corrected_"+str(params['nb_epochs'])+params['iron_measure']+".csv", sep=',',index=False)
 
     return 0
