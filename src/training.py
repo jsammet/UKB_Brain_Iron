@@ -133,8 +133,8 @@ def tester(model, dataset, indices, params,criterion):
             label_true = label_true.float().to(device)
             label_pred = model(image)
             for i in range(len(label_pred)):
-                test_pred.append(torch.argmax(label_pred[i]).item())
-                test_true.append(torch.argmax(label_true[i]).item())
+                test_pred.append(label_pred[i].item()) # test_pred.append(torch.argmax(label_pred[i]).item())
+                test_true.append(label_true[i].item()) # test_true.append(torch.argmax(label_true[i]).item())
                 test_name.append(name[i].item())
             # calculate total loss
             loss = criterion(label_pred.squeeze(1), label_true)
@@ -149,7 +149,7 @@ def tester(model, dataset, indices, params,criterion):
     print(f'Final test result: \t\t Test set loss - MSELoss: {test_loss}')
 
     df = pd.DataFrame(data={"ID": list(range(len(test_pred))),"Name": test_name, "Prediction": test_pred, "True_Label": test_true})
-    df.to_csv("results/test_3classes_"+str(params['nb_epochs'])+ \
+    df.to_csv("results/test_numeric_"+str(params['nb_epochs'])+ \
         "_"+str(params['lr'])+"_"+str(params['alpha'])+"_"+params['iron_measure']+".csv", sep=',',index=False)
 
     return 0

@@ -47,7 +47,7 @@ class Iron_NN(nn.Module):
         self.down6 = Conv_Block(64, 32)
         self.fc1 = nn.Linear(32*14*16*1, 128)
         self.fc2 = nn.Linear(128, 64)
-        self.fc3 = nn.Linear(64, 3)
+        self.fc3 = nn.Linear(64, 1)
         self.activation = torch.nn.Sigmoid()
 
     def forward(self, x):
@@ -63,4 +63,4 @@ class Iron_NN(nn.Module):
         x8 = self.fc1(x7_)
         x9 = self.fc2(x8)
         x = self.fc3(x9)
-        return self.activation(x)
+        return x #self.activation(x)

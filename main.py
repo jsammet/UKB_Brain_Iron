@@ -32,10 +32,10 @@ def main():
         'iron_measure':'mean_corp_hb', #'Hct_percent' 'hb_concent'  'mean_corp_hb'
         'test_percent': 0.1,
         'val_percent': 0.04,
-        'batch_size': 20,
-        'nb_epochs': 30,
+        'batch_size': 30,
+        'nb_epochs': 100,
         'shuffle': True,
-        'num_workers': 16,
+        'num_workers': 20,
         'lr': 1e-4,
         'alpha': 5e-7,
         'channels': [32, 64, 128, 256, 256, 64],

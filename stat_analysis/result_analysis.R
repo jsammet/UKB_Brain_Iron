@@ -13,16 +13,20 @@ max(full_file$mean_corp_hb)
 min(full_file$mean_corp_hb)
 ( ceiling(max(full_file$mean_corp_hb)) - floor(min(full_file$mean_corp_hb)) )/100
 
-results <- read.csv("../results/test_3classes_30_0.0001_5e-07_mean_corp_hb.csv")
+results <- read.csv("../results/test_numeric_100_0.0001_5e-07_mean_corp_hb.csv")
 View(results)
 sd(results$True_Label)
 min(results$True_Label)
 max(results$True_Label)
+median(results$True_Label)
 
 sd(results$Prediction)
 min(results$Prediction)
 max(results$Prediction)
-plot(results$True_Label,results$Prediction, xlim=range(0:4), ylim=range(0:4))
+relation <- lm(results$True_Label~results$Prediction)
+plot(results$Prediction,results$True_Label, xlim=range(20:40), ylim=range(20:40))
+abline(relation)
+View(relation)
 
 df <- data.frame(results$True_Label)
 df %>%

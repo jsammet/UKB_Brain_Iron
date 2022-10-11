@@ -9,12 +9,12 @@ class loss_func(nn.Module):
     """
     def __init__(self, alpha):
         super().__init__()
-        self.loss =  nn.CrossEntropyLoss() #MSELoss()
+        self.loss =  nn.MSELoss()
         self.alpha = alpha
 
     def forward(self,x,y):
-        #std_div = torch.std(x) - torch.std(y)
-        #loss = self.loss(x, y) + self.alpha * std_div
+        std_div = torch.std(x) - torch.std(y)
+        loss = self.loss(x, y) + self.alpha * std_div
         #print(loss)
-        loss = self.loss(x,y)
+        #loss = self.loss(x,y)
         return loss
