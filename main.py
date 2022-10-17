@@ -12,19 +12,10 @@ from src.loss import loss_func
 import torch
 from torch import nn
 from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torchinfo import summary
 
 from torch.nn.parallel import DistributedDataParallel as DDP
-"""
-def setup(rank, world_size):
-    os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = '12355'
 
-    # initialize the process group
-    dist.init_process_group("gloo", rank=rank, world_size=world_size)
-
-def cleanup():
-    dist.destroy_process_group()
-"""
 def main():
     image_path='../SWI_images'
     label_path='swi_brain_vol_info.csv'
@@ -33,13 +24,15 @@ def main():
         'test_percent': 0.1,
         'val_percent': 0.04,
         'batch_size': 30,
-        'nb_epochs': 100,
+        'nb_epochs': 50,
         'shuffle': True,
         'num_workers': 20,
         'lr': 1e-4,
         'alpha': 5e-7,
+        'class_nb': 3,
         'channels': [32, 64, 128, 256, 256, 64],
         'model_dir': 'src/models',
+        'test_file': 'results/test_3class_',
         'device': 'cuda'
     }
     print(params)
@@ -50,8 +43,8 @@ def main():
     #scheduler = ReduceLROnPlateau(optimizer, 'min')
     if torch.cuda.is_available():
         device = torch.device(params['device'])
-        #assert params['device'] < torch.cuda.device_count(), "GPU device number is too high"
-        model=Iron_NN(params['channels']).to(device)
+        model=Iron_NN(params['channels'],params['class_nb']).to(device)
+        print(summary(model, input_size=(1,1,256,288,48))) # batch size set to 1 instead params['batch_size']
         model = nn.DataParallel(model)
         criterion = loss_func(params['alpha']).to(device)
         optimizer = torch.optim.Adam(model.parameters(), lr=params['lr'])
@@ -84,16 +77,4 @@ def main():
     test_saliency(model, dataset, test_indices, params, criterion)
 
 if __name__ == "__main__":
-    """
-    size = 4
-    processes = []
-    mp.set_start_method("spawn")
-    for rank in range(size):
-        p = mp.Process(target=init_process, args=(rank, size, run))
-        p.start()
-        processes.append(p)
-
-    for p in processes:
-        p.join()
-    """
     main()

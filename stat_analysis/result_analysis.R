@@ -7,13 +7,13 @@ setwd(dirname(rstudioapi::getSourceEditorContext()$path))
 getwd()
 
 #range analysis of labels
-full_file <- read.csv("final_brain_vol_info.csv")
+full_file <- read.csv("../swi_brain_vol_info.csv")
 View(full_file)
 max(full_file$mean_corp_hb)
 min(full_file$mean_corp_hb)
 ( ceiling(max(full_file$mean_corp_hb)) - floor(min(full_file$mean_corp_hb)) )/100
 
-results <- read.csv("../results/test_numeric_100_0.0001_5e-07_mean_corp_hb.csv")
+results <- read.csv("../results/test_10class_100_0.0001_5e-07_mean_corp_hb.csv")
 View(results)
 sd(results$True_Label)
 min(results$True_Label)

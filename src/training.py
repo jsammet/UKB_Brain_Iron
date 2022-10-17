@@ -6,9 +6,8 @@ import time
 import nibabel as nib
 
 from .loss import loss_func
-from torch.utils.data.sampler import RandomSampler, SequentialSampler
+from torch.utils.data.sampler import RandomSampler, WeightedRandomSampler
 from torch.utils import data
-from torchinfo import summary
 
 
 def trainer(model, dataset, indices, params, optimizer, criterion, scheduler):
@@ -20,7 +19,6 @@ def trainer(model, dataset, indices, params, optimizer, criterion, scheduler):
     1. Best performing model
     '''
     # Print network model for good overview
-    print(summary(model, input_size=(params['batch_size'],1,256,288,48)))
     # Put device correctly
     device = torch.device(params['device'])
     model.to(device)
@@ -34,9 +32,9 @@ def trainer(model, dataset, indices, params, optimizer, criterion, scheduler):
     train_indices, val_indices = indices[split:], indices[:split]
 
     # generate DataLoaders
-    train_sampler = RandomSampler(train_indices)
+    train_sampler = WeightedRandomSampler(train_indices)
     train_loader = data.DataLoader(dataset, batch_size=params['batch_size'], sampler=train_sampler, num_workers=params['num_workers'])
-    val_sampler = RandomSampler(val_indices)
+    val_sampler = WeightedRandomSampler(val_indices)
     val_loader = data.DataLoader(dataset, batch_size=params['batch_size'], sampler=val_sampler, num_workers=params['num_workers'])
     history = {'train_loss': [], 'valid_loss': []}
     epoch_step_time = []
@@ -54,7 +52,7 @@ def trainer(model, dataset, indices, params, optimizer, criterion, scheduler):
         model.train()
         train_loss=0.0
         # go through once
-        for image, label_true, name in train_loader:
+        for image, label_true, label_val, name in train_loader:
 
             image = image.float().to(device)
             label_true = label_true.float().to(device)
@@ -84,7 +82,7 @@ def trainer(model, dataset, indices, params, optimizer, criterion, scheduler):
         model.eval()
         with torch.no_grad():
         # go thorugh one batch
-            for image, label_true, name in val_loader:
+            for image, label_true, label_val, name in val_loader:
 
                 image = image.float().to(device)
                 label_true = label_true.float().to(device)
@@ -98,12 +96,12 @@ def trainer(model, dataset, indices, params, optimizer, criterion, scheduler):
             scheduler.step((valid_loss))
 
             # Print last validation results as example
-            example_diff = torch.sum(torch.sub(label_pred,label_true)).item() / label_pred.size(dim=0)
-            print(f'Result of last validation items (avg): \t\t {example_diff}')
+            #example_diff = torch.sum(torch.sub(label_pred,label_true)).item() / label_pred.size(dim=0)
+            print(f'Result of last validation items (avg): \t\t True class: {torch.argmax(label_true).item()} \t Prediction class: {torch.argmax(label_pred).item()}')
             # print epoch info
             valid_loss = valid_loss / len(val_loader)
             history['valid_loss'].append(valid_loss)
-            print(f'Epoch {epoch} \t\t Training - MSELoss: {train_loss} \t\t Validation - MSELoss: {valid_loss}')
+            print(f'Epoch {epoch} \t\t Training - KL-Div Loss: {train_loss} \t\t Validation - KL-Div Loss: {valid_loss}')
             epoch_info = 'Epoch %d/%d' % (epoch + 1, params['nb_epochs'])
             time_info = '%.4f sec/step' % np.mean(epoch_step_time)
             print(' - '.join((epoch_info, time_info)), flush=True)
@@ -115,7 +113,7 @@ def trainer(model, dataset, indices, params, optimizer, criterion, scheduler):
 
 def tester(model, dataset, indices, params,criterion):
     # Put model into CUDA
-    test_sampler = RandomSampler(indices)
+    test_sampler = WeightedRandomSampler(indices)
     test_loader = data.DataLoader(dataset, batch_size=params['batch_size'], sampler=test_sampler, num_workers=params['num_workers'])
     device = torch.device(params['device'])
 
@@ -124,17 +122,19 @@ def tester(model, dataset, indices, params,criterion):
     model.eval()
     test_pred = []
     test_true = []
+    test_val = []
     test_name = []
     with torch.no_grad():
     # go through test set
-        for image, label_true, name in test_loader:
+        for image, label_true, label_val, name in test_loader:
 
             image = image.float().to(device)
             label_true = label_true.float().to(device)
             label_pred = model(image)
             for i in range(len(label_pred)):
-                test_pred.append(label_pred[i].item()) # test_pred.append(torch.argmax(label_pred[i]).item())
-                test_true.append(label_true[i].item()) # test_true.append(torch.argmax(label_true[i]).item())
+                test_pred.append(torch.argmax(label_pred[i]).item())
+                test_true.append(torch.argmax(label_true[i]).item())
+                test_val.append(label_val[i].item())
                 test_name.append(name[i].item())
             # calculate total loss
             loss = criterion(label_pred.squeeze(1), label_true)
@@ -142,14 +142,14 @@ def tester(model, dataset, indices, params,criterion):
             test_loss += loss
 
     # Print last test results as example
-    example_diff = torch.sum(torch.sub(label_pred,label_true)).item() / label_pred.size(dim=0)
-    print(f'Result of last test items (avg): \t\t {example_diff}')
+    # example_diff = torch.sum(torch.sub(label_pred,label_true)).item() / label_pred.size(dim=0)
+    print(f'Result of last test items (avg): \t\t True class: {torch.argmax(label_true).item()} \t Prediction class: {torch.argmax(label_pred).item()}')
     #print test info
     test_loss = test_loss / len(test_loader)
-    print(f'Final test result: \t\t Test set loss - MSELoss: {test_loss}')
+    print(f'Final test result: \t\t Test set loss - KL-Div Loss: {test_loss}')
 
-    df = pd.DataFrame(data={"ID": list(range(len(test_pred))),"Name": test_name, "Prediction": test_pred, "True_Label": test_true})
-    df.to_csv("results/test_numeric_"+str(params['nb_epochs'])+ \
+    df = pd.DataFrame(data={"ID": list(range(len(test_pred))),"Name": test_name, "Orig. true val": test_val, "Prediction": test_pred, "True_Label": test_true})
+    df.to_csv(params['test_file']+str(params['nb_epochs'])+ \
         "_"+str(params['lr'])+"_"+str(params['alpha'])+"_"+params['iron_measure']+".csv", sep=',',index=False)
 
     return 0
