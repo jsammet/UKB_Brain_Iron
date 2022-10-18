@@ -13,7 +13,7 @@ max(full_file$mean_corp_hb)
 min(full_file$mean_corp_hb)
 ( ceiling(max(full_file$mean_corp_hb)) - floor(min(full_file$mean_corp_hb)) )/100
 
-results <- read.csv("../results/test_10class_100_0.0001_5e-07_mean_corp_hb.csv")
+results <- read.csv("../results/test_3class_30_0.0001_5e-07_mean_corp_hb.csv")
 View(results)
 sd(results$True_Label)
 min(results$True_Label)
@@ -72,3 +72,21 @@ TN_2 <- nrow(results[ which(results$Prediction != "2" & results$True_Label != "2
 TP_2 / (TP_2 + FN_2)
 # Specifictiy
 TN_2 / (TN_2 + FP_2)
+
+min_ <- min(results$True_Label)
+max_ <- max(results$True_Label)
+Sensitivity <- 0
+Specificity <- 0
+for (i in min_:max_) {
+  i
+  TP_ <- nrow(results[ which(results$Prediction == i & results$True_Label == i) ,])
+  FP_ <- nrow(results[ which(results$Prediction == i & results$True_Label != i) ,])
+  FN_ <- nrow(results[ which(results$Prediction != i & results$True_Label == i) ,])
+  TN_ <- nrow(results[ which(results$Prediction != i & results$True_Label != i) ,])
+  Sensitivity <- Sensitivity + TP_ / (TP_ + FN_)
+  Specificity <- Specificity + TN_ / (TN_ + FP_)
+}
+Sensitivity <- Sensitivity / (max_+1)
+Specificity <- Specificity / (max_+1)
+Sensitivity
+Specificity

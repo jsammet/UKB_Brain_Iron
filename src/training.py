@@ -1,4 +1,5 @@
 import os
+from src.swi_dataset import swi_dataset
 import torch
 import numpy as np
 import pandas as pd
@@ -8,9 +9,10 @@ import nibabel as nib
 from .loss import loss_func
 from torch.utils.data.sampler import RandomSampler, WeightedRandomSampler
 from torch.utils import data
+import pdb
 
 
-def trainer(model, dataset, indices, params, optimizer, criterion, scheduler):
+def trainer(model, indices, params, optimizer, criterion, scheduler):
     '''
     Contains
     1. split of training set into train and validation
@@ -18,12 +20,10 @@ def trainer(model, dataset, indices, params, optimizer, criterion, scheduler):
     Returns
     1. Best performing model
     '''
-    # Print network model for good overview
     # Put device correctly
     device = torch.device(params['device'])
     model.to(device)
     criterion.to(device)
-    print("model device train ", next(model.parameters()).get_device())
 
     # Split of indices into train and validate
     dataset_size = len(indices)
@@ -31,11 +31,20 @@ def trainer(model, dataset, indices, params, optimizer, criterion, scheduler):
     np.random.shuffle(indices)
     train_indices, val_indices = indices[split:], indices[:split]
 
+    #Create the datasets for train and validation
+    train_dataset = swi_dataset(train_indices,params)
+    val_dataset = swi_dataset(val_indices,params)
+    
+    # determine weights for WEightedRandomSampler
+    values, counts = np.unique(train_dataset.class_list, return_counts=True)
+    class_weights = [sum(counts) / c for c in counts]
+    example_weights = [class_weights[e] for e in train_dataset.class_list]
+    
     # generate DataLoaders
-    train_sampler = WeightedRandomSampler(train_indices)
-    train_loader = data.DataLoader(dataset, batch_size=params['batch_size'], sampler=train_sampler, num_workers=params['num_workers'])
-    val_sampler = WeightedRandomSampler(val_indices)
-    val_loader = data.DataLoader(dataset, batch_size=params['batch_size'], sampler=val_sampler, num_workers=params['num_workers'])
+    train_sampler = RandomSampler(range(len(train_indices))) #WeightedRandomSampler(example_weights, len(train_dataset.class_list))
+    train_loader = data.DataLoader(train_dataset, batch_size=params['batch_size'], sampler=train_sampler, num_workers=params['num_workers'])
+    val_sampler = RandomSampler(range(len(val_indices)))
+    val_loader = data.DataLoader(val_dataset, batch_size=params['batch_size'], sampler=val_sampler, num_workers=params['num_workers'])
     history = {'train_loss': [], 'valid_loss': []}
     epoch_step_time = []
 
@@ -52,6 +61,7 @@ def trainer(model, dataset, indices, params, optimizer, criterion, scheduler):
         model.train()
         train_loss=0.0
         # go through once
+
         for image, label_true, label_val, name in train_loader:
 
             image = image.float().to(device)
@@ -67,9 +77,10 @@ def trainer(model, dataset, indices, params, optimizer, criterion, scheduler):
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+
         # Print last validation results as example
-        example_diff = torch.sum(torch.sub(label_pred,label_true)).item() / label_pred.size(dim=0)
-        print(f'Result of last training items (avg): \t\t {example_diff}')
+        print(f'Result of last validation items (avg): \t\t True class: {torch.argmax(label_true[-1]).item()} \t Prediction class: {torch.argmax(label_pred[-1]).item()}')
+        print(f'Length of training set: \t\t { len(train_loader)}')
         # get compute time
         train_loss = train_loss / len(train_loader)
         print("train_loss: ", train_loss)
@@ -97,24 +108,25 @@ def trainer(model, dataset, indices, params, optimizer, criterion, scheduler):
 
             # Print last validation results as example
             #example_diff = torch.sum(torch.sub(label_pred,label_true)).item() / label_pred.size(dim=0)
-            print(f'Result of last validation items (avg): \t\t True class: {torch.argmax(label_true).item()} \t Prediction class: {torch.argmax(label_pred).item()}')
+            print(f'Result of last validation items (avg): \t\t True class: {torch.argmax(label_true[-1]).item()} \t Prediction class: {torch.argmax(label_pred[-1]).item()}')
             # print epoch info
             valid_loss = valid_loss / len(val_loader)
             history['valid_loss'].append(valid_loss)
-            print(f'Epoch {epoch} \t\t Training - KL-Div Loss: {train_loss} \t\t Validation - KL-Div Loss: {valid_loss}')
+            print(f'Epoch {epoch} \t\t Training - Cross-Entropy Loss: {train_loss} \t\t Validation - CE Loss: {valid_loss}')
             epoch_info = 'Epoch %d/%d' % (epoch + 1, params['nb_epochs'])
             time_info = '%.4f sec/step' % np.mean(epoch_step_time)
             print(' - '.join((epoch_info, time_info)), flush=True)
 
       # final model save
-    torch.save(model.state_dict(),os.path.join(params['model_dir'], str(params['nb_epochs'])+ \
+    torch.save(model.state_dict(),os.path.join(params['model_dir'], str(params['nb_epochs'])+'_'+str(params['class_nb'])+'class_'+ \
         "_"+str(params['lr'])+"_"+str(params['alpha'])+"_"+params['iron_measure']+'final%04d.pt' % epoch))
     return model, history
 
-def tester(model, dataset, indices, params,criterion):
+def tester(model, indices, params,criterion):
     # Put model into CUDA
-    test_sampler = WeightedRandomSampler(indices)
-    test_loader = data.DataLoader(dataset, batch_size=params['batch_size'], sampler=test_sampler, num_workers=params['num_workers'])
+    test_sampler = RandomSampler(indices)
+    test_dataset = swi_dataset(indices,params)
+    test_loader = data.DataLoader(test_dataset, batch_size=params['batch_size'], sampler=test_sampler, num_workers=params['num_workers'])
     device = torch.device(params['device'])
 
     print("---------------------------------------------START TEST---------------------------------------------")
@@ -146,21 +158,22 @@ def tester(model, dataset, indices, params,criterion):
     print(f'Result of last test items (avg): \t\t True class: {torch.argmax(label_true).item()} \t Prediction class: {torch.argmax(label_pred).item()}')
     #print test info
     test_loss = test_loss / len(test_loader)
-    print(f'Final test result: \t\t Test set loss - KL-Div Loss: {test_loss}')
+    print(f'Final test result: \t\t Test set loss - CE Loss: {test_loss}')
 
     df = pd.DataFrame(data={"ID": list(range(len(test_pred))),"Name": test_name, "Orig. true val": test_val, "Prediction": test_pred, "True_Label": test_true})
-    df.to_csv(params['test_file']+str(params['nb_epochs'])+ \
+    df.to_csv(params['test_file']+str(params['class_nb'])+'class_'+str(params['nb_epochs'])+ \
         "_"+str(params['lr'])+"_"+str(params['alpha'])+"_"+params['iron_measure']+".csv", sep=',',index=False)
 
     return 0
 
-def test_saliency(model, dataset, indices, params,criterion):
+def test_saliency(model, indices, params,criterion):
     """
     Test function that incldues saliency aps based on grads
     """
     # Put model into CUDA
     test_sampler = RandomSampler(indices)
-    test_loader = data.DataLoader(dataset, batch_size=params['batch_size'], sampler=test_sampler, num_workers=params['num_workers'])
+    test_dataset = swi_dataset(indices,params)
+    test_loader = data.DataLoader(test_dataset, batch_size=params['batch_size'], sampler=test_sampler, num_workers=params['num_workers'])
     device = torch.device(params['device'])
 
     print("---------------------------------------------START SALIENCY MAP AND TEST---------------------------------------------")
@@ -170,7 +183,7 @@ def test_saliency(model, dataset, indices, params,criterion):
     test_true = []
     with torch.no_grad():
     # go through test set
-        for image, label_true, name in test_loader:
+        for image, label_true, label_val, name in test_loader:
             image = image.float().to(device)
             label_true = label_true.float().to(device)
             # Set the requires_grad_ to the image for retrieving gradients
