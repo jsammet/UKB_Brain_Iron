@@ -44,4 +44,4 @@ def weight_calc(indices, params):
             class_[i] = label_idx
     class_ = class_.astype('int32')
 
-    return torch.from_numpy(compute_class_weight('balanced', np.unique(class_), class_))
+    return torch.from_numpy(compute_class_weight('balanced', np.unique(class_), class_)).float()

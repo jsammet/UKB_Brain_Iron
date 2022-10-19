@@ -132,4 +132,3 @@ swi_df$ID <- as.integer(swi_df$ID)
 full_file <- read.csv("final_brain_vol_info.csv")
 swi_joint <- merge(x = swi_df, y = full_file, by = "ID")
 write.csv(swi_joint,'swi_brain_vol_info.csv')
-

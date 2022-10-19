@@ -18,19 +18,19 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 
 def main():
     params = {
-        'iron_measure':'mean_corp_hb', #'Hct_percent' 'hb_concent'  'mean_corp_hb'
+        'iron_measure':'hb_concent', #'Hct_percent' 'hb_concent'  'mean_corp_hb'
         'test_percent': 0.1,
         'val_percent': 0.04,
         'batch_size': 20,
         'nb_epochs': 30,
         'num_workers': 16,
         'shuffle': True,
-        'lr': 1e-3,
+        'lr': 1e-4,
         'alpha': 5e-7,
-        'class_nb': 3,
+        'class_nb': 5,
         'channels': [32, 64, 128, 256, 256, 64],
         'model_dir': 'src/models',
-        'test_file': 'results/test_weightLoss_',
+        'test_file': 'results/test_correct_CELoss_',
         'image_path':'../SWI_images',
         'label_path':'swi_brain_vol_info.csv',
         'device': 'cuda'
@@ -52,7 +52,7 @@ def main():
     train_indices, test_indices = idx_list[split:], idx_list[:split]
     # create tensor for class weights of loss
     loss_weights = weight_calc(idx_list, params)
-
+    
     #scheduler = ReduceLROnPlateau(optimizer, 'min')
     if torch.cuda.is_available():
         device = torch.device(params['device'])

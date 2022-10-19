@@ -13,7 +13,7 @@ max(full_file$mean_corp_hb)
 min(full_file$mean_corp_hb)
 ( ceiling(max(full_file$mean_corp_hb)) - floor(min(full_file$mean_corp_hb)) )/100
 
-results <- read.csv("../results/test_3class_30_0.0001_5e-07_mean_corp_hb.csv")
+results <- read.csv("../results/test_correct_CELoss_3class_30_0.0001_5e-07_mean_corp_hb.csv")
 View(results)
 sd(results$True_Label)
 min(results$True_Label)
@@ -90,3 +90,12 @@ Sensitivity <- Sensitivity / (max_+1)
 Specificity <- Specificity / (max_+1)
 Sensitivity
 Specificity
+
+# plot iron measurements
+hist(full_file$mean_corp_hb, breaks=50)
+hist(full_file$mean_corp_hb_concent, breaks=50)
+hist(full_file$mean_corp_vol, breaks=50)
+hist(full_file$Hct_percent, breaks=50)
+hist(full_file$hb_concent, breaks=50)
+hist(full_file$erythrocyte_cnt, breaks=50)
+hist(full_file$erythrocyte_dist_wdt, breaks=50)

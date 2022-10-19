@@ -65,9 +65,9 @@ def trainer(model, indices, params, optimizer, criterion, scheduler):
         for image, label_true, label_val, name in train_loader:
 
             image = image.float().to(device)
-            label_true = label_true.float().to(device)
+            label_true = label_true.to(device)
+            label_true = label_true.argmax(dim=1)
             label_pred = model(image)
-
             # calculate total loss
             loss = criterion(label_pred.squeeze(1), label_true)
             # print(loss)
@@ -79,7 +79,7 @@ def trainer(model, indices, params, optimizer, criterion, scheduler):
             optimizer.step()
 
         # Print last validation results as example
-        print(f'Result of last validation items (avg): \t\t True class: {torch.argmax(label_true[-1]).item()} \t Prediction class: {torch.argmax(label_pred[-1]).item()}')
+        print(f'Result of last validation items (avg): \t\t True class: {label_true[-1]} \t Prediction class: {torch.argmax(label_pred[-1]).item()}')
         print(f'Length of training set: \t\t { len(train_loader)}')
         # get compute time
         train_loss = train_loss / len(train_loader)
@@ -96,9 +96,9 @@ def trainer(model, indices, params, optimizer, criterion, scheduler):
             for image, label_true, label_val, name in val_loader:
 
                 image = image.float().to(device)
-                label_true = label_true.float().to(device)
+                label_true = label_true.to(device)
+                label_true = label_true.argmax(dim=1)
                 label_pred = model(image)
-
                 # calculate total loss
                 loss = criterion(label_pred.squeeze(1), label_true)
                 valid_loss += loss
@@ -108,7 +108,7 @@ def trainer(model, indices, params, optimizer, criterion, scheduler):
 
             # Print last validation results as example
             #example_diff = torch.sum(torch.sub(label_pred,label_true)).item() / label_pred.size(dim=0)
-            print(f'Result of last validation items (avg): \t\t True class: {torch.argmax(label_true[-1]).item()} \t Prediction class: {torch.argmax(label_pred[-1]).item()}')
+            print(f'Result of last validation items (avg): \t\t True class: {label_true[-1]} \t Prediction class: {torch.argmax(label_pred[-1]).item()}')
             # print epoch info
             valid_loss = valid_loss / len(val_loader)
             history['valid_loss'].append(valid_loss)
@@ -141,11 +141,13 @@ def tester(model, indices, params,criterion):
         for image, label_true, label_val, name in test_loader:
 
             image = image.float().to(device)
-            label_true = label_true.float().to(device)
+            label_true = label_true.to(device)
+            label_true = label_true.argmax(dim=1)
+
             label_pred = model(image)
             for i in range(len(label_pred)):
                 test_pred.append(torch.argmax(label_pred[i]).item())
-                test_true.append(torch.argmax(label_true[i]).item())
+                test_true.append(label_true[i].item())
                 test_val.append(label_val[i].item())
                 test_name.append(name[i].item())
             # calculate total loss
@@ -155,7 +157,7 @@ def tester(model, indices, params,criterion):
 
     # Print last test results as example
     # example_diff = torch.sum(torch.sub(label_pred,label_true)).item() / label_pred.size(dim=0)
-    print(f'Result of last test items (avg): \t\t True class: {torch.argmax(label_true).item()} \t Prediction class: {torch.argmax(label_pred).item()}')
+    print(f'Result of last test items (avg): \t\t True class: {label_true} \t Prediction class: {torch.argmax(label_pred[-1]).item()}')
     #print test info
     test_loss = test_loss / len(test_loader)
     print(f'Final test result: \t\t Test set loss - CE Loss: {test_loss}')
@@ -185,7 +187,8 @@ def test_saliency(model, indices, params,criterion):
     # go through test set
         for image, label_true, label_val, name in test_loader:
             image = image.float().to(device)
-            label_true = label_true.float().to(device)
+            label_true = label_true.to(device)
+            label_true = label_true.argmax(dim=1)
             # Set the requires_grad_ to the image for retrieving gradients
             image.requires_grad_()
             label_pred = model(image)
