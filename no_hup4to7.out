@@ -1,11 +1,1 @@
 nohup: ignoring input
-/home/jsammet/UKB_brain_mri_raw/mri_env/lib/python3.6/site-packages/sklearn/utils/validation.py:72: FutureWarning: Pass classes=[0 1 2], y=[1 1 1 ... 1 1 2] as keyword args. From version 1.0 (renaming of 0.25) passing these as positional arguments will result in an error
-  "will result in an error", FutureWarning)
-Traceback (most recent call last):
-  File "main.py", line 82, in <module>
-    main()
-  File "main.py", line 79, in main
-    test_saliency(model, test_indices, params, criterion)
-  File "/home/jsammet/UKB_Brain_Iron/src/training.py", line 201, in test_saliency
-    saliency, _ = torch.max(image.grad.data.abs(), dim=1)
-AttributeError: 'NoneType' object has no attribute 'data'

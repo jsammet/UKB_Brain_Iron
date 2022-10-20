@@ -9,10 +9,12 @@ import nibabel as nib
 from .loss import loss_func
 from torch.utils.data.sampler import RandomSampler, WeightedRandomSampler
 from torch.utils import data
+from captum.attr import GuidedGradCam
+
 import pdb
 
 
-def trainer(model, indices, params, optimizer, criterion, scheduler):
+def trainer(model, indices, params, optimizer, criterion, scheduler, percentile_val):
     '''
     Contains
     1. split of training set into train and validation
@@ -32,8 +34,8 @@ def trainer(model, indices, params, optimizer, criterion, scheduler):
     train_indices, val_indices = indices[split:], indices[:split]
 
     #Create the datasets for train and validation
-    train_dataset = swi_dataset(train_indices,params)
-    val_dataset = swi_dataset(val_indices,params)
+    train_dataset = swi_dataset(train_indices, percentile_val, params)
+    val_dataset = swi_dataset(val_indices, percentile_val, params)
     
     # determine weights for WEightedRandomSampler
     values, counts = np.unique(train_dataset.class_list, return_counts=True)
@@ -65,8 +67,7 @@ def trainer(model, indices, params, optimizer, criterion, scheduler):
         for image, label_true, label_val, name in train_loader:
 
             image = image.float().to(device)
-            label_true = label_true.to(device)
-            label_true = label_true.argmax(dim=1)
+            label_true = label_true.long().to(device)
             label_pred = model(image)
             # calculate total loss
             loss = criterion(label_pred.squeeze(1), label_true)
@@ -96,8 +97,7 @@ def trainer(model, indices, params, optimizer, criterion, scheduler):
             for image, label_true, label_val, name in val_loader:
 
                 image = image.float().to(device)
-                label_true = label_true.to(device)
-                label_true = label_true.argmax(dim=1)
+                label_true = label_true.long().to(device)
                 label_pred = model(image)
                 # calculate total loss
                 loss = criterion(label_pred.squeeze(1), label_true)
@@ -108,7 +108,7 @@ def trainer(model, indices, params, optimizer, criterion, scheduler):
 
             # Print last validation results as example
             #example_diff = torch.sum(torch.sub(label_pred,label_true)).item() / label_pred.size(dim=0)
-            print(f'Result of last validation items (avg): \t\t True class: {label_true[-1]} \t Prediction class: {torch.argmax(label_pred[-1]).item()}')
+            print(f'Result of last validation items (avg): \t\t True class: {label_true} \t Prediction class: {label_pred}')
             # print epoch info
             valid_loss = valid_loss / len(val_loader)
             history['valid_loss'].append(valid_loss)
@@ -122,10 +122,10 @@ def trainer(model, indices, params, optimizer, criterion, scheduler):
         "_"+str(params['lr'])+"_"+str(params['alpha'])+"_"+params['iron_measure']+'final%04d.pt' % epoch))
     return model, history
 
-def tester(model, indices, params,criterion):
+def tester(model, indices, params,criterion, percentile_val):
     # Put model into CUDA
     test_sampler = RandomSampler(indices)
-    test_dataset = swi_dataset(indices,params)
+    test_dataset = swi_dataset(indices, percentile_val, params)
     test_loader = data.DataLoader(test_dataset, batch_size=params['batch_size'], sampler=test_sampler, num_workers=params['num_workers'])
     device = torch.device(params['device'])
 
@@ -141,8 +141,7 @@ def tester(model, indices, params,criterion):
         for image, label_true, label_val, name in test_loader:
 
             image = image.float().to(device)
-            label_true = label_true.to(device)
-            label_true = label_true.argmax(dim=1)
+            label_true = label_true.long().to(device)
 
             label_pred = model(image)
             for i in range(len(label_pred)):
@@ -157,7 +156,7 @@ def tester(model, indices, params,criterion):
 
     # Print last test results as example
     # example_diff = torch.sum(torch.sub(label_pred,label_true)).item() / label_pred.size(dim=0)
-    print(f'Result of last test items (avg): \t\t True class: {label_true} \t Prediction class: {torch.argmax(label_pred[-1]).item()}')
+    print(f'Result of last test items (avg): \t\t True class: {label_true} \t Prediction class: {torch.argmax(label_pred).item()}')
     #print test info
     test_loss = test_loss / len(test_loader)
     print(f'Final test result: \t\t Test set loss - CE Loss: {test_loss}')
@@ -168,13 +167,13 @@ def tester(model, indices, params,criterion):
 
     return 0
 
-def test_saliency(model, indices, params,criterion):
+def test_saliency(model, indices, params,criterion, percentile_val):
     """
     Test function that incldues saliency aps based on grads
     """
     # Put model into CUDA
     test_sampler = RandomSampler(indices)
-    test_dataset = swi_dataset(indices,params)
+    test_dataset = swi_dataset(indices, percentile_val, sparams)
     test_loader = data.DataLoader(test_dataset, batch_size=params['batch_size'], sampler=test_sampler, num_workers=params['num_workers'])
     device = torch.device(params['device'])
 
@@ -187,27 +186,18 @@ def test_saliency(model, indices, params,criterion):
     # go through test set
         for image, label_true, label_val, name in test_loader:
             image = image.float().to(device)
-            label_true = label_true.to(device)
+            label_true = label_true.long().to(device)
             label_true = label_true.argmax(dim=1)
             # Set the requires_grad_ to the image for retrieving gradients
             image.requires_grad_()
             label_pred = model(image)
-            # Cath output for saliency map
-            #output_idx = output.argmax()
-            #output_max = output[0, output_idx]
+            
+            # GuidedGradCAM
+            # ToDo: get correct labels and check attention map of correct labeled cases
+            class_
+            guided_gc = GuidedGradCam(model, model.down6)
+            attribution = guided_gc.attribute(input, class_)
 
-            # Retireve the saliency map and also pick the maximum value from channels on each pixel.
-            # In this case, we look at dim=1. Recall the shape (batch_size, channel, width, height, depth)
-            saliency, _ = torch.max(image.grad.data.abs(), dim=1)
-            saliency = saliency.reshape(256,288,48)[:,:,24]
-            # Visualize the image and the saliency map
-            ni_img = nib.Nifti1Image(saliency.cpu(), affine=np.eye(4))
-            nib.save(ni_img, "results/sal_maps/saliency_"+str(name)+".nii")
-
-            for i in range(len(label_pred)):
-                test_pred.append(label_pred[i].item())
-                test_true.append(label_true[i].item())
-            # calculate total loss
             loss = criterion(label_pred.squeeze(1), label_true)
             print(loss)
             test_loss += loss

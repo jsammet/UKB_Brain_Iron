@@ -14,7 +14,7 @@ class loss_func(nn.Module):
     """
     def __init__(self, alpha, weights=None):
         super().__init__()
-        self.loss = nn.CrossEntropyLoss(weights, reduction='mean') # KLDivLoss(reduction='sum')#nn.MSELoss()
+        self.loss = nn.CrossEntropyLoss() #weights, reduction='mean') # KLDivLoss(reduction='sum')#nn.MSELoss()
         self.alpha = alpha
 
     def forward(self,x,y):
@@ -26,22 +26,13 @@ class loss_func(nn.Module):
         loss = self.loss(x, y) #/ n
         return loss
 
-def weight_calc(indices, params):
+def weight_calc(indices,percentile_val, params):
     label_full_table = pd.read_csv(params['label_path'])
     label_file = label_full_table[['ID',params['iron_measure']]]
-    up_end = np.percentile(label_file.iloc[:, 1],99.7)
-    low_end = np.percentile(label_file.iloc[:, 1],0.3)
-    class_sz = (up_end - low_end) / params['class_nb']
     class_ = np.empty(len(indices))
     for i in range(len(indices)):
-        label_val = label_file.loc[label_file['ID'] == indices.item(i)].iloc[0,1]
-        if label_val >= up_end:
-            class_[i] = int(params['class_nb'] - 1)
-        elif label_val < low_end:
-            class_[i] = 0
-        else:
-            label_idx = math.floor( (label_val - low_end) / class_sz)
-            class_[i] = label_idx
+            label_val = label_file.loc[label_file['ID'] == indices.item(i)].iloc[0,1]
+            class_[i] = np.sum(label_val < percentile_val)
     class_ = class_.astype('int32')
 
     return torch.from_numpy(compute_class_weight('balanced', np.unique(class_), class_)).float()

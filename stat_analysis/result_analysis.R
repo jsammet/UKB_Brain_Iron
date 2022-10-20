@@ -13,7 +13,7 @@ max(full_file$mean_corp_hb)
 min(full_file$mean_corp_hb)
 ( ceiling(max(full_file$mean_corp_hb)) - floor(min(full_file$mean_corp_hb)) )/100
 
-results <- read.csv("../results/test_correct_CELoss_3class_30_0.0001_5e-07_mean_corp_hb.csv")
+results <- read.csv("/home/jsammet/mnt_ox/UKB_Brain_Iron/results/test_percentile_unweight_class_3class_30_0.0001_5e-07_mean_corp_hb.csv")
 View(results)
 sd(results$True_Label)
 min(results$True_Label)
@@ -43,35 +43,7 @@ tert_df <- input_df %>%
 tert_df <- subset(tert_df, select = c(X.1,ID, mean_corp_hb, tertiles))
 View(tert_df)
 
-# check for accuracy case 0
-TP_0 <- nrow(results[ which(results$Prediction == "0" & results$True_Label == "0") ,])
-FP_0 <- nrow(results[ which(results$Prediction == "0" & results$True_Label != "0") ,])
-FN_0 <- nrow(results[ which(results$Prediction != "0" & results$True_Label == "0") ,])
-TN_0 <- nrow(results[ which(results$Prediction != "0" & results$True_Label != "0") ,])
-# Sensitivity
-TP_0 / (TP_0 + FN_0)
-# Specifictiy
-TN_0 / (TN_0 + FP_0)
-
-# check for accuracy case 1
-TP_1 <- nrow(results[ which(results$Prediction == "1" & results$True_Label == "1") ,])
-FP_1 <- nrow(results[ which(results$Prediction == "1" & results$True_Label != "1") ,])
-FN_1 <- nrow(results[ which(results$Prediction != "1" & results$True_Label == "1") ,])
-TN_1 <- nrow(results[ which(results$Prediction != "1" & results$True_Label != "1") ,])
-# Sensitivity
-TP_1 / (TP_1 + FN_1)
-# Specifictiy
-TN_1 / (TN_1 + FP_1)
-
-# check for accuracy case 2
-TP_2 <- nrow(results[ which(results$Prediction == "2" & results$True_Label == "2") ,])
-FP_2 <- nrow(results[ which(results$Prediction == "2" & results$True_Label != "2") ,])
-FN_2 <- nrow(results[ which(results$Prediction != "2" & results$True_Label == "2") ,])
-TN_2 <- nrow(results[ which(results$Prediction != "2" & results$True_Label != "2") ,])
-# Sensitivity
-TP_2 / (TP_2 + FN_2)
-# Specifictiy
-TN_2 / (TN_2 + FP_2)
+# Check accuracy
 
 min_ <- min(results$True_Label)
 max_ <- max(results$True_Label)
@@ -91,6 +63,13 @@ Specificity <- Specificity / (max_+1)
 Sensitivity
 Specificity
 
+plot(results$True_Label,results$Orig..true.val)
+min(results[ which(results$True_Label == 0) ,]$Orig..true.val)
+max(results[ which(results$True_Label == 1) ,]$Orig..true.val)
+min(results[ which(results$True_Label == 1) ,]$Orig..true.val)
+max(results[ which(results$True_Label == 2) ,]$Orig..true.val)
+results[ which(full_file$Orig..true.val == 31.52) ,]
+View(full_file)
 # plot iron measurements
 hist(full_file$mean_corp_hb, breaks=50)
 hist(full_file$mean_corp_hb_concent, breaks=50)

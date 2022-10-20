@@ -13,7 +13,7 @@ class swi_dataset(data.Dataset):
     The data.Dataset class is a pyTorch class which help
     in speeding up  this process with effective parallelization
     """
-    def __init__(self,indices,params):
+    def __init__(self,indices,percentile_val,params):
         '''
         image_path: Path pointing to folder containing NifTi images
         label_path: csv-file containg information about iron measures
@@ -21,23 +21,13 @@ class swi_dataset(data.Dataset):
         # make classes and their weights
         label_full_table = pd.read_csv(params['label_path'])
         self.label_file = label_full_table[['ID',params['iron_measure']]]
-        self.up_end = np.percentile(self.label_file.iloc[:, 1],99.7)
-        self.low_end = np.percentile(self.label_file.iloc[:, 1],0.3)
-        self.class_nb = params['class_nb']
-        self.class_sz = (self.up_end - self.low_end) / params['class_nb']
         
         val_ = np.empty(len(indices))
         class_ = np.empty(len(indices))
         for i in range(len(indices)):
             label_val = self.label_file.loc[self.label_file['ID'] == indices.item(i)].iloc[0,1]
             val_[i] = label_val
-            if label_val >= self.up_end:
-                class_[i] = int(params['class_nb'] - 1)
-            elif label_val < self.low_end:
-                class_[i] = 0
-            else:
-                label_idx = math.floor( (label_val - self.low_end) / self.class_sz)
-                class_[i] = label_idx
+            class_[i] = np.sum(label_val > percentile_val)
         
         # make image path a self var of dataset
         self.img_dir=params['image_path']
@@ -60,8 +50,7 @@ class swi_dataset(data.Dataset):
 
         # Create label information accordingly
         label_val = self.val_list[index]
-        label = torch.zeros(self.class_nb)
-        label[self.class_list[index]] = 1
+        label = self.class_list[index]
         
         #return both together
         return image, label, label_val, self.idx_list[index]
