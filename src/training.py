@@ -43,9 +43,9 @@ def trainer(model, indices, params, optimizer, criterion, scheduler, percentile_
     example_weights = [class_weights[e] for e in train_dataset.class_list]
     
     # generate DataLoaders
-    train_sampler = RandomSampler(range(len(train_indices))) #WeightedRandomSampler(example_weights, len(train_dataset.class_list))
+    train_sampler = RandomSampler(range(len(train_dataset))) #WeightedRandomSampler(example_weights, len(train_dataset.class_list))
     train_loader = data.DataLoader(train_dataset, batch_size=params['batch_size'], sampler=train_sampler, num_workers=params['num_workers'])
-    val_sampler = RandomSampler(range(len(val_indices)))
+    val_sampler = RandomSampler(range(len(val_dataset)))
     val_loader = data.DataLoader(val_dataset, batch_size=params['batch_size'], sampler=val_sampler, num_workers=params['num_workers'])
     history = {'train_loss': [], 'valid_loss': []}
     epoch_step_time = []
@@ -67,7 +67,7 @@ def trainer(model, indices, params, optimizer, criterion, scheduler, percentile_
         for image, label_true, label_val, name in train_loader:
 
             image = image.float().to(device)
-            label_true = label_true.long().to(device)
+            label_true = label_true.float().to(device)
             label_pred = model(image)
             # calculate total loss
             loss = criterion(label_pred.squeeze(1), label_true)
@@ -80,7 +80,7 @@ def trainer(model, indices, params, optimizer, criterion, scheduler, percentile_
             optimizer.step()
 
         # Print last validation results as example
-        print(f'Result of last validation items (avg): \t\t True class: {label_true[-1]} \t Prediction class: {torch.argmax(label_pred[-1]).item()}')
+        print(f'Result of last validation items (avg): \t\t True class: {label_true[-1]} \t Orig. value: {label_val[-1]} \t Prediction class: {torch.argmax(label_pred[-1]).item()}')
         print(f'Length of training set: \t\t { len(train_loader)}')
         # get compute time
         train_loss = train_loss / len(train_loader)
@@ -97,7 +97,7 @@ def trainer(model, indices, params, optimizer, criterion, scheduler, percentile_
             for image, label_true, label_val, name in val_loader:
 
                 image = image.float().to(device)
-                label_true = label_true.long().to(device)
+                label_true = label_true.float().to(device)
                 label_pred = model(image)
                 # calculate total loss
                 loss = criterion(label_pred.squeeze(1), label_true)
@@ -108,7 +108,7 @@ def trainer(model, indices, params, optimizer, criterion, scheduler, percentile_
 
             # Print last validation results as example
             #example_diff = torch.sum(torch.sub(label_pred,label_true)).item() / label_pred.size(dim=0)
-            print(f'Result of last validation items (avg): \t\t True class: {label_true} \t Prediction class: {label_pred}')
+            print(f'Result of last validation items (avg): \t\t True class: {label_true} \t Orig. value: {label_val} \t Prediction class: {label_pred}')
             # print epoch info
             valid_loss = valid_loss / len(val_loader)
             history['valid_loss'].append(valid_loss)
@@ -141,12 +141,12 @@ def tester(model, indices, params,criterion, percentile_val):
         for image, label_true, label_val, name in test_loader:
 
             image = image.float().to(device)
-            label_true = label_true.long().to(device)
+            label_true = label_true.float().to(device)
 
             label_pred = model(image)
             for i in range(len(label_pred)):
                 test_pred.append(torch.argmax(label_pred[i]).item())
-                test_true.append(label_true[i].item())
+                test_true.append(torch.argmax(label_true[i]).item())
                 test_val.append(label_val[i].item())
                 test_name.append(name[i].item())
             # calculate total loss
@@ -173,7 +173,7 @@ def test_saliency(model, indices, params,criterion, percentile_val):
     """
     # Put model into CUDA
     test_sampler = RandomSampler(indices)
-    test_dataset = swi_dataset(indices, percentile_val, sparams)
+    test_dataset = swi_dataset(indices, percentile_val, params)
     test_loader = data.DataLoader(test_dataset, batch_size=params['batch_size'], sampler=test_sampler, num_workers=params['num_workers'])
     device = torch.device(params['device'])
 
@@ -186,7 +186,7 @@ def test_saliency(model, indices, params,criterion, percentile_val):
     # go through test set
         for image, label_true, label_val, name in test_loader:
             image = image.float().to(device)
-            label_true = label_true.long().to(device)
+            label_true = label_true.float().to(device)
             label_true = label_true.argmax(dim=1)
             # Set the requires_grad_ to the image for retrieving gradients
             image.requires_grad_()

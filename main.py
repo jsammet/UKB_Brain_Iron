@@ -25,12 +25,12 @@ def main():
         'nb_epochs': 30,
         'num_workers': 16,
         'shuffle': True,
-        'lr': 1e-3,
+        'lr': 1e-6,
         'alpha': 5e-7,
-        'class_nb': 3,
+        'class_nb': 2,
         'channels': [32, 64, 128, 256, 256, 64],
         'model_dir': 'src/models',
-        'test_file': 'results/test_percentile_unweight_class_',
+        'test_file': 'results/test_lowLR_2class_',
         'image_path':'../SWI_images',
         'label_path':'swi_brain_vol_info.csv',
         'device': 'cuda'
@@ -38,8 +38,8 @@ def main():
     print(params)
 
     # Define parameters
+    np.random.seed(420)
     torch.manual_seed(42)
-    np.random.seed(42)
 
     # Create data list
     label_full_table = pd.read_csv(params['label_path'])
@@ -55,10 +55,10 @@ def main():
     value_list = label_full_table[params['iron_measure']].values
     class_sz = 100 / params['class_nb']
     class_per =  [class_sz*(c+1) for c in range(params['class_nb'] - 1)]
-    percentile_val = [np.percentile(value_list,cl_) for cl_ in class_per]
+    percentile_val = [np.around(np.percentile(value_list,cl_), decimals=2) for cl_ in class_per]
     print(percentile_val)
     # create tensor for class weights of loss
-    loss_weights = weight_calc(idx_list,percentile_val, params)
+    #loss_weights = weight_calc(idx_list,percentile_val, params)
     
     #scheduler = ReduceLROnPlateau(optimizer, 'min')
     if torch.cuda.is_available():
@@ -66,7 +66,7 @@ def main():
         model=Iron_NN(params['channels'],params['class_nb']).to(device)
         print(summary(model, input_size=(1,1,256,288,48))) # batch size set to 1 instead params['batch_size']
         model = nn.DataParallel(model)
-        criterion = loss_func(params['alpha'], loss_weights).to(device)
+        criterion = loss_func(params['alpha']).to(device)
         optimizer = torch.optim.Adam(model.parameters(), lr=params['lr'])
         scheduler = ReduceLROnPlateau(optimizer, 'min', patience=3)
     else:
@@ -75,7 +75,8 @@ def main():
     # train model
     model, history = trainer(model, train_indices, params, optimizer, criterion, scheduler, percentile_val)
     df = pd.DataFrame(data={"ID": list(range(len(history['train_loss']))), "train_loss": history['train_loss'], "valid_loss": history['valid_loss']})
-    df.to_csv("results/train_valid_"+str(params['nb_epochs'])+params['iron_measure']+".csv", sep=',',index=False)
+    df.to_csv("results/train_valid_lowlR_"+str(params['nb_epochs'])+'_'+str(params['class_nb'])+'class_'+ \
+        "_"+str(params['lr'])+params['iron_measure']+".csv", sep=',',index=False)
 
     #model.load_state_dict(torch.load(os.path.join(params['model_dir'],'10hb_concentfinal0009.pt')))
 

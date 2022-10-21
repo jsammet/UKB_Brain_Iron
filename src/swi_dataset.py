@@ -18,16 +18,18 @@ class swi_dataset(data.Dataset):
         image_path: Path pointing to folder containing NifTi images
         label_path: csv-file containg information about iron measures
         '''
-        # make classes and their weights
+        # make classes and their weights 
+        assert params['label_path'].endswith('.csv')
         label_full_table = pd.read_csv(params['label_path'])
         self.label_file = label_full_table[['ID',params['iron_measure']]]
         
+        self.class_nb = params['class_nb']
         val_ = np.empty(len(indices))
         class_ = np.empty(len(indices))
         for i in range(len(indices)):
             label_val = self.label_file.loc[self.label_file['ID'] == indices.item(i)].iloc[0,1]
             val_[i] = label_val
-            class_[i] = np.sum(label_val > percentile_val)
+            class_[i] = np.sum(label_val >= percentile_val)
         
         # make image path a self var of dataset
         self.img_dir=params['image_path']
@@ -50,7 +52,8 @@ class swi_dataset(data.Dataset):
 
         # Create label information accordingly
         label_val = self.val_list[index]
-        label = self.class_list[index]
+        label = torch.zeros(self.class_nb)
+        label[self.class_list[index]] = 1
         
         #return both together
         return image, label, label_val, self.idx_list[index]

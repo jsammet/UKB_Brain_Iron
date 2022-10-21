@@ -1,3 +1,1 @@
 nohup: ignoring input
-/home/jsammet/UKB_brain_mri_raw/mri_env/lib/python3.6/site-packages/sklearn/utils/validation.py:72: FutureWarning: Pass classes=[0 1 2], y=[1 1 0 ... 1 0 0] as keyword args. From version 1.0 (renaming of 0.25) passing these as positional arguments will result in an error
-  "will result in an error", FutureWarning)
