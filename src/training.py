@@ -14,7 +14,7 @@ from captum.attr import GuidedGradCam
 import pdb
 
 
-def trainer(model, indices, params, optimizer, criterion, scheduler, percentile_val):
+def trainer(model, dataset, indices, params, optimizer, criterion, scheduler, percentile_val):
     '''
     Contains
     1. split of training set into train and validation
@@ -32,21 +32,12 @@ def trainer(model, indices, params, optimizer, criterion, scheduler, percentile_
     split = int(np.floor(params['val_percent'] * dataset_size))
     np.random.shuffle(indices)
     train_indices, val_indices = indices[split:], indices[:split]
-
-    #Create the datasets for train and validation
-    train_dataset = swi_dataset(train_indices, percentile_val, params)
-    val_dataset = swi_dataset(val_indices, percentile_val, params)
-    
-    # determine weights for WEightedRandomSampler
-    values, counts = np.unique(train_dataset.class_list, return_counts=True)
-    class_weights = [sum(counts) / c for c in counts]
-    example_weights = [class_weights[e] for e in train_dataset.class_list]
-    
+ 
     # generate DataLoaders
-    train_sampler = RandomSampler(range(len(train_dataset))) #WeightedRandomSampler(example_weights, len(train_dataset.class_list))
-    train_loader = data.DataLoader(train_dataset, batch_size=params['batch_size'], sampler=train_sampler, num_workers=params['num_workers'])
-    val_sampler = RandomSampler(range(len(val_dataset)))
-    val_loader = data.DataLoader(val_dataset, batch_size=params['batch_size'], sampler=val_sampler, num_workers=params['num_workers'])
+    train_sampler = RandomSampler(train_indices)
+    train_loader = data.DataLoader(dataset, batch_size=params['batch_size'], sampler=train_sampler, num_workers=params['num_workers'])
+    val_sampler = RandomSampler(val_indices)
+    val_loader = data.DataLoader(dataset, batch_size=params['batch_size'], sampler=val_sampler, num_workers=params['num_workers'])
     history = {'train_loss': [], 'valid_loss': []}
     epoch_step_time = []
 
@@ -86,7 +77,7 @@ def trainer(model, indices, params, optimizer, criterion, scheduler, percentile_
         train_loss = train_loss / len(train_loader)
         print("train_loss: ", train_loss)
         epoch_step_time.append(time.time() - step_start_time)
-        history['train_loss'].append(train_loss)
+        history['train_loss'].append(train_loss.item())
 
         ### VALIDATION
         print("---------------------------------------------START VALIDATION---------------------------------------------")
@@ -111,7 +102,7 @@ def trainer(model, indices, params, optimizer, criterion, scheduler, percentile_
             print(f'Result of last validation items (avg): \t\t True class: {label_true} \t Orig. value: {label_val} \t Prediction class: {label_pred}')
             # print epoch info
             valid_loss = valid_loss / len(val_loader)
-            history['valid_loss'].append(valid_loss)
+            history['valid_loss'].append(valid_loss.item())
             print(f'Epoch {epoch} \t\t Training - Cross-Entropy Loss: {train_loss} \t\t Validation - CE Loss: {valid_loss}')
             epoch_info = 'Epoch %d/%d' % (epoch + 1, params['nb_epochs'])
             time_info = '%.4f sec/step' % np.mean(epoch_step_time)
@@ -122,11 +113,10 @@ def trainer(model, indices, params, optimizer, criterion, scheduler, percentile_
         "_"+str(params['lr'])+"_"+str(params['alpha'])+"_"+params['iron_measure']+'final%04d.pt' % epoch))
     return model, history
 
-def tester(model, indices, params,criterion, percentile_val):
+def tester(model, dataset, indices, params,criterion, percentile_val):
     # Put model into CUDA
     test_sampler = RandomSampler(indices)
-    test_dataset = swi_dataset(indices, percentile_val, params)
-    test_loader = data.DataLoader(test_dataset, batch_size=params['batch_size'], sampler=test_sampler, num_workers=params['num_workers'])
+    test_loader = data.DataLoader(dataset, batch_size=params['batch_size'], sampler=test_sampler, num_workers=params['num_workers'])
     device = torch.device(params['device'])
 
     print("---------------------------------------------START TEST---------------------------------------------")
@@ -167,21 +157,18 @@ def tester(model, indices, params,criterion, percentile_val):
 
     return 0
 
-def test_saliency(model, indices, params,criterion, percentile_val):
+def test_saliency(model, dataset, indices, params,criterion, percentile_val):
     """
     Test function that incldues saliency aps based on grads
     """
     # Put model into CUDA
     test_sampler = RandomSampler(indices)
-    test_dataset = swi_dataset(indices, percentile_val, params)
-    test_loader = data.DataLoader(test_dataset, batch_size=params['batch_size'], sampler=test_sampler, num_workers=params['num_workers'])
+    test_loader = data.DataLoader(dataset, batch_size=params['batch_size'], sampler=test_sampler, num_workers=params['num_workers'])
     device = torch.device(params['device'])
 
     print("---------------------------------------------START SALIENCY MAP AND TEST---------------------------------------------")
     test_loss = 0.0
     model.eval()
-    test_pred = []
-    test_true = []
     with torch.no_grad():
     # go through test set
         for image, label_true, label_val, name in test_loader:

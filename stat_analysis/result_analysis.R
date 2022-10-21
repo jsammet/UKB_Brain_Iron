@@ -13,7 +13,7 @@ max(full_file$mean_corp_hb)
 min(full_file$mean_corp_hb)
 ( ceiling(max(full_file$mean_corp_hb)) - floor(min(full_file$mean_corp_hb)) )/100
 
-results <- read.csv("/home/jsammet/mnt_ox/UKB_Brain_Iron/results/test_2class_2class_30_0.0001_5e-07_mean_corp_hb.csv")
+results <- read.csv("/home/jsammet/mnt_ox/UKB_Brain_Iron/results/test_oneD_3class_3class_30_0.0001_5e-07_mean_corp_hb.csv")
 View(results)
 sd(results$True_Label)
 min(results$True_Label)
@@ -44,7 +44,6 @@ tert_df <- subset(tert_df, select = c(X.1,ID, mean_corp_hb, tertiles))
 View(tert_df)
 
 # Check accuracy
-
 min_ <- min(results$True_Label)
 max_ <- max(results$True_Label)
 Sensitivity <- 0
@@ -62,6 +61,10 @@ Sensitivity <- Sensitivity / (max_+1)
 Specificity <- Specificity / (max_+1)
 Sensitivity
 Specificity
+
+# Plot loss
+loss <- read.csv("/home/jsammet/mnt_ox/UKB_Brain_Iron/results/train_valid_oneD_30_3class__0.0001mean_corp_hb.csv")
+View(loss)
 
 plot(results$True_Label,results$Orig..true.val)
 min(results[ which(results$True_Label == 0) ,]$Orig..true.val)

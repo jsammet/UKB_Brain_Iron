@@ -22,15 +22,15 @@ def main():
         'test_percent': 0.1,
         'val_percent': 0.04,
         'batch_size': 20,
-        'nb_epochs': 30,
+        'nb_epochs': 60,
         'num_workers': 16,
         'shuffle': True,
-        'lr': 1e-6,
+        'lr': 1e-4,
         'alpha': 5e-7,
-        'class_nb': 2,
+        'class_nb': 10,
         'channels': [32, 64, 128, 256, 256, 64],
         'model_dir': 'src/models',
-        'test_file': 'results/test_lowLR_2class_',
+        'test_file': 'results/test_oneD_',
         'image_path':'../SWI_images',
         'label_path':'swi_brain_vol_info.csv',
         'device': 'cuda'
@@ -41,22 +41,25 @@ def main():
     np.random.seed(420)
     torch.manual_seed(42)
 
+
     # Create data list
     label_full_table = pd.read_csv(params['label_path'])
-    idx_list = label_full_table[['ID']].values
-    idx_list = idx_list.ravel()
-    # create training-test split
-    dataset_size = len(idx_list)
-    print(f'Dataset length: {dataset_size}')
-    split = int(np.floor(params['test_percent'] * dataset_size))
-    np.random.shuffle(idx_list)
-    train_indices, test_indices = idx_list[split:], idx_list[:split]
     # Create classes
     value_list = label_full_table[params['iron_measure']].values
     class_sz = 100 / params['class_nb']
     class_per =  [class_sz*(c+1) for c in range(params['class_nb'] - 1)]
     percentile_val = [np.around(np.percentile(value_list,cl_), decimals=2) for cl_ in class_per]
     print(percentile_val)
+    # Create dataset
+    dataset= swi_dataset(percentile_val,params)
+    # create training-test split
+    dataset_size = len(dataset)
+    print(f'Dataset length: {dataset_size}')
+    indices = list(range(dataset_size))
+    split = int(np.floor(params['test_percent'] * dataset_size))
+    np.random.shuffle(indices)
+    train_indices, test_indices = indices[split:], indices[:split]
+    
     # create tensor for class weights of loss
     #loss_weights = weight_calc(idx_list,percentile_val, params)
     
@@ -73,18 +76,18 @@ def main():
         raise Exception("Sorry, CUDA is neccessary.")
     
     # train model
-    model, history = trainer(model, train_indices, params, optimizer, criterion, scheduler, percentile_val)
+    model, history = trainer(model, dataset, train_indices, params, optimizer, criterion, scheduler, percentile_val)
     df = pd.DataFrame(data={"ID": list(range(len(history['train_loss']))), "train_loss": history['train_loss'], "valid_loss": history['valid_loss']})
-    df.to_csv("results/train_valid_lowlR_"+str(params['nb_epochs'])+'_'+str(params['class_nb'])+'class_'+ \
+    df.to_csv("results/train_valid_oneD_"+str(params['nb_epochs'])+'_'+str(params['class_nb'])+'class_'+ \
         "_"+str(params['lr'])+params['iron_measure']+".csv", sep=',',index=False)
 
     #model.load_state_dict(torch.load(os.path.join(params['model_dir'],'10hb_concentfinal0009.pt')))
 
     # evaluate on test set
-    tester(model, test_indices, params, criterion, percentile_val)
+    tester(model, dataset, test_indices, params, criterion, percentile_val)
 
     # saliency retrival
-    test_saliency(model, test_indices, params, criterion, percentile_val)
+    test_saliency(model, dataset, test_indices, params, criterion, percentile_val)
 
 if __name__ == "__main__":
     main()

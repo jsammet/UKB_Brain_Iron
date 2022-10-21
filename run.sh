@@ -1,6 +1,6 @@
 #!/bin/bash
 
-CUDA_VISIBLE_DEVICES=4,5,6,7 python3 main.py >> iron_log_hb_mean_corp_lowLR_2class.txt
+CUDA_VISIBLE_DEVICES=0,1,2,3 python3 main.py >> iron_log_mean_corp_OneDataset_60ep_10class.txt
 
 
 # command to run: nohup bash run.sh &> no_hup.out &
