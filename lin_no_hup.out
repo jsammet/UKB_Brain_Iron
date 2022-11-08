@@ -1,1 +1,2 @@
 nohup: ignoring input
+linear_run.sh: line 3: 21264 Terminated              CUDA_VISIBLE_DEVICES=6,7,8 python3 linear_main.py >> check_linear_iron.txt

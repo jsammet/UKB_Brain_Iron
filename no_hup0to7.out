@@ -1,9 +1,0 @@
-nohup: ignoring input
-Traceback (most recent call last):
-  File "main.py", line 83, in <module>
-    main()
-  File "main.py", line 80, in main
-    test_saliency(model, test_indices, params, criterion)
-  File "/home/jsammet/UKB_Brain_Iron/src/training.py", line 200, in test_saliency
-    saliency, _ = torch.max(image.grad.data.abs(), dim=1)
-AttributeError: 'NoneType' object has no attribute 'data'

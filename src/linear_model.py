@@ -11,4 +11,4 @@ class receive_voxel():
             image = np.asarray(nib.load(img_path).get_fdata())
             x_data.append(image)
         
-        self.data = x_data = np.asarray(x_data)
+        self.data = np.asarray(x_data)

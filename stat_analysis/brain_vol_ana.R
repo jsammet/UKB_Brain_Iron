@@ -121,7 +121,7 @@ save(PCAscores, file="DatafilePCA_noNA.RData")
 write.csv(file_fin,'final_brain_vol_info.csv')
 
 # Create script to only have table entries where a images exists
-img_list <- list.files(path="../SWI_images")
+img_list <- list.files(path="../../SWI_images")
 swi_imgs <- data.frame(matrix(unlist(img_list), nrow=length(img_list), byrow=TRUE))
 colnames(swi_imgs) <- c('SWI')
 swi_df <- data.frame(do.call('rbind', strsplit(as.character(swi_imgs$SWI),'_')))
@@ -130,5 +130,10 @@ colnames(swi_df) <- c('ID')
 swi_df$ID <- as.integer(swi_df$ID)
 
 full_file <- read.csv("final_brain_vol_info.csv")
+y <- full_file$f.25881.2.0
+x <- full_file$mean_corp_hb
+plot(y,x,abline(lm(x~y)))
+full_file <- rename(full_file,'ID' = 'f.eid')
 swi_joint <- merge(x = swi_df, y = full_file, by = "ID")
+View(swi_joint)
 write.csv(swi_joint,'swi_brain_vol_info.csv')

@@ -9,7 +9,8 @@ import nibabel as nib
 from .loss import loss_func
 from torch.utils.data.sampler import RandomSampler, WeightedRandomSampler
 from torch.utils import data
-from captum.attr import GuidedGradCam
+from captum.attr import IntegratedGradients
+from captum.attr import visualization as viz
 
 import pdb
 
@@ -32,7 +33,7 @@ def trainer(model, dataset, indices, params, optimizer, criterion, scheduler, pe
     split = int(np.floor(params['val_percent'] * dataset_size))
     np.random.shuffle(indices)
     train_indices, val_indices = indices[split:], indices[:split]
- 
+
     # generate DataLoaders
     train_sampler = RandomSampler(train_indices)
     train_loader = data.DataLoader(dataset, batch_size=params['batch_size'], sampler=train_sampler, num_workers=params['num_workers'])
@@ -55,7 +56,7 @@ def trainer(model, dataset, indices, params, optimizer, criterion, scheduler, pe
         train_loss=0.0
         # go through once
 
-        for image, label_true, label_val, name in train_loader:
+        for image, label_true, label_val, name, aff_mat in train_loader:
 
             image = image.float().to(device)
             label_true = label_true.float().to(device)
@@ -64,12 +65,11 @@ def trainer(model, dataset, indices, params, optimizer, criterion, scheduler, pe
             loss = criterion(label_pred.squeeze(1), label_true)
             # print(loss)
             train_loss += loss
-
             # backpropagate and optimize
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-
+            
         # Print last validation results as example
         print(f'Result of last validation items (avg): \t\t True class: {label_true[-1]} \t Orig. value: {label_val[-1]} \t Prediction class: {torch.argmax(label_pred[-1]).item()}')
         print(f'Length of training set: \t\t { len(train_loader)}')
@@ -85,7 +85,7 @@ def trainer(model, dataset, indices, params, optimizer, criterion, scheduler, pe
         model.eval()
         with torch.no_grad():
         # go thorugh one batch
-            for image, label_true, label_val, name in val_loader:
+            for image, label_true, label_val, name, aff_mat in val_loader:
 
                 image = image.float().to(device)
                 label_true = label_true.float().to(device)
@@ -99,7 +99,7 @@ def trainer(model, dataset, indices, params, optimizer, criterion, scheduler, pe
 
             # Print last validation results as example
             #example_diff = torch.sum(torch.sub(label_pred,label_true)).item() / label_pred.size(dim=0)
-            print(f'Result of last validation items (avg): \t\t True class: {label_true} \t Orig. value: {label_val} \t Prediction class: {label_pred}')
+            print(f'Result of last validation items (avg): \t\t True class: {label_true[-1]} \t Orig. value: {label_val[-1]} \t Prediction class: {label_pred[-1]}')
             # print epoch info
             valid_loss = valid_loss / len(val_loader)
             history['valid_loss'].append(valid_loss.item())
@@ -113,7 +113,8 @@ def trainer(model, dataset, indices, params, optimizer, criterion, scheduler, pe
         "_"+str(params['lr'])+"_"+str(params['alpha'])+"_"+params['iron_measure']+'final%04d.pt' % epoch))
     return model, history
 
-def tester(model, dataset, indices, params,criterion, percentile_val):
+
+def tester(model, dataset, indices, params,criterion):
     # Put model into CUDA
     test_sampler = RandomSampler(indices)
     test_loader = data.DataLoader(dataset, batch_size=params['batch_size'], sampler=test_sampler, num_workers=params['num_workers'])
@@ -128,7 +129,7 @@ def tester(model, dataset, indices, params,criterion, percentile_val):
     test_name = []
     with torch.no_grad():
     # go through test set
-        for image, label_true, label_val, name in test_loader:
+        for image, label_true, label_val, name, aff_mat in test_loader:
 
             image = image.float().to(device)
             label_true = label_true.float().to(device)
@@ -157,46 +158,33 @@ def tester(model, dataset, indices, params,criterion, percentile_val):
 
     return 0
 
-def test_saliency(model, dataset, indices, params,criterion, percentile_val):
+def test_saliency(model, dataset, indices, params):
     """
     Test function that incldues saliency aps based on grads
     """
     # Put model into CUDA
     test_sampler = RandomSampler(indices)
-    test_loader = data.DataLoader(dataset, batch_size=params['batch_size'], sampler=test_sampler, num_workers=params['num_workers'])
+    test_loader = data.DataLoader(dataset, batch_size=params['sal_batch'], sampler=test_sampler, num_workers=params['sal_workers'])
     device = torch.device(params['device'])
 
     print("---------------------------------------------START SALIENCY MAP AND TEST---------------------------------------------")
-    test_loss = 0.0
+    #model = torch.nn.DataParallel(model, device_ids=[0])
     model.eval()
+    ig = IntegratedGradients(model)
     with torch.no_grad():
     # go through test set
-        for image, label_true, label_val, name in test_loader:
+        for image, label_true, label_val, name, aff_mat in test_loader:
             image = image.float().to(device)
             label_true = label_true.float().to(device)
             label_true = label_true.argmax(dim=1)
             # Set the requires_grad_ to the image for retrieving gradients
             image.requires_grad_()
-            label_pred = model(image)
-            
-            # GuidedGradCAM
-            # ToDo: get correct labels and check attention map of correct labeled cases
-            class_
-            guided_gc = GuidedGradCam(model, model.down6)
-            attribution = guided_gc.attribute(input, class_)
-
-            loss = criterion(label_pred.squeeze(1), label_true)
-            print(loss)
-            test_loss += loss
-
-    # Print last test results as example
-    example_diff = torch.sum(torch.sub(label_pred,label_true)).item() / label_pred.size(dim=0)
-    print(f'Result of last test items (avg): \t\t {example_diff}')
-    #print test info
-    test_loss = test_loss / len(test_loader)
-    print(f'Final test result: \t\t Test set loss - MSELoss: {test_loss}')
-
-    #df = pd.DataFrame(data={"ID": list(range(len(test_pred))), "Prediction": test_pred, "True_Label": test_true})
-    #df.to_csv("results/test_corrected_"+str(params['nb_epochs'])+params['iron_measure']+".csv", sep=',',index=False)
+            # Integrated Gradients
+            attribution = ig.attribute(image, target=label_true, internal_batch_size=4)
+            attribution = attribution.squeeze(0).squeeze(0)
+            #print(f"Image {name.item()} and image shape: {attribution.size()}")
+            attr_img = attribution.cpu().numpy()
+            ni_img = nib.Nifti1Image(attr_img, affine=np.eye(4)) #aff_mat.cpu().numpy()[0])
+            nib.save(ni_img, os.path.join(params['sal_maps'],str(name.item())+"_"+params['iron_measure']+"_"+str(params['class_nb'])+"_classes"+".nii"))
 
     return 0

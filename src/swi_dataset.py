@@ -38,18 +38,16 @@ class swi_dataset(data.Dataset):
         # Create image path and read image
         #print("index of index: ", self.indices[index])
         img_path = os.path.join(self.img_dir, str(self.label_file.iloc[index, 0])+'_SWI.nii.gz')
-        image = np.asarray(nib.load(img_path).get_fdata())
+        nifti_img = nib.load(img_path)
+        image = np.asarray(nifti_img.get_fdata())
         image = image[np.newaxis, ...]
 
         # Create label information accordingly
         label_val = self.label_file.iloc[index, 1]
         #label = self.label_file.iloc[index, 1]
-        if self.label_file.iloc[index, 1] >= self.percent[1]:
-            label = torch.tensor([1, 0, 0])
-        elif self.label_file.iloc[index, 1] >= self.percent[0]:
-            label = torch.tensor([0, 1, 0])
-        else:
-            label = torch.tensor([0, 0, 1])
+        label = torch.zeros(self.class_nb)
+        label_idx = np.sum(label_val < self.percent)
+        label[label_idx] = 1
         
         #return both together
-        return image, label, label_val, self.label_file.iloc[index, 0]
+        return image, label, label_val, self.label_file.iloc[index, 0], nifti_img.affine

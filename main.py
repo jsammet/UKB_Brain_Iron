@@ -22,18 +22,21 @@ def main():
         'test_percent': 0.1,
         'val_percent': 0.04,
         'batch_size': 20,
-        'nb_epochs': 60,
+        'nb_epochs': 30,
         'num_workers': 16,
         'shuffle': True,
         'lr': 1e-4,
         'alpha': 5e-7,
-        'class_nb': 10,
+        'class_nb': 3,
         'channels': [32, 64, 128, 256, 256, 64],
         'model_dir': 'src/models',
-        'test_file': 'results/test_oneD_',
+        'test_file': 'results/test_GradCam_',
+        'sal_maps': 'results/GradCam_maps',
         'image_path':'../SWI_images',
         'label_path':'swi_brain_vol_info.csv',
-        'device': 'cuda'
+        'device': 'cuda',
+        'sal_batch': 1,
+        'sal_workers': 1
     }
     print(params)
 
@@ -59,35 +62,33 @@ def main():
     split = int(np.floor(params['test_percent'] * dataset_size))
     np.random.shuffle(indices)
     train_indices, test_indices = indices[split:], indices[:split]
-    
+
     # create tensor for class weights of loss
     #loss_weights = weight_calc(idx_list,percentile_val, params)
-    
+
     #scheduler = ReduceLROnPlateau(optimizer, 'min')
     if torch.cuda.is_available():
         device = torch.device(params['device'])
         model=Iron_NN(params['channels'],params['class_nb']).to(device)
         print(summary(model, input_size=(1,1,256,288,48))) # batch size set to 1 instead params['batch_size']
-        model = nn.DataParallel(model)
+        model = nn.DataParallel(model, device_ids=[0, 1, 2, 3])
         criterion = loss_func(params['alpha']).to(device)
         optimizer = torch.optim.Adam(model.parameters(), lr=params['lr'])
         scheduler = ReduceLROnPlateau(optimizer, 'min', patience=3)
     else:
         raise Exception("Sorry, CUDA is neccessary.")
-    
+
     # train model
     model, history = trainer(model, dataset, train_indices, params, optimizer, criterion, scheduler, percentile_val)
     df = pd.DataFrame(data={"ID": list(range(len(history['train_loss']))), "train_loss": history['train_loss'], "valid_loss": history['valid_loss']})
-    df.to_csv("results/train_valid_oneD_"+str(params['nb_epochs'])+'_'+str(params['class_nb'])+'class_'+ \
+    df.to_csv("results/train_valid_IntGrad_"+str(params['nb_epochs'])+'_'+str(params['class_nb'])+'class_'+ \
         "_"+str(params['lr'])+params['iron_measure']+".csv", sep=',',index=False)
 
-    #model.load_state_dict(torch.load(os.path.join(params['model_dir'],'10hb_concentfinal0009.pt')))
-
     # evaluate on test set
-    tester(model, dataset, test_indices, params, criterion, percentile_val)
+    tester(model, dataset, test_indices, params, criterion)
 
     # saliency retrival
-    test_saliency(model, dataset, test_indices, params, criterion, percentile_val)
+    test_saliency(model, dataset, test_indices, params)
 
 if __name__ == "__main__":
     main()

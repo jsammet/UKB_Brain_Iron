@@ -1,9 +1,0 @@
-nohup: ignoring input
-/home/jsammet/UKB_brain_mri_raw/mri_env/lib/python3.6/site-packages/torch/cuda/__init__.py:80: UserWarning: CUDA initialization: Unexpected error from cudaGetDeviceCount(). Did you run some cuda functions before calling NumCudaDevices() that might have already set an error? Error 804: forward compatibility was attempted on non supported HW (Triggered internally at  ../c10/cuda/CUDAFunctions.cpp:112.)
-  return torch._C._cuda_getDeviceCount() > 0
-Traceback (most recent call last):
-  File "main.py", line 80, in <module>
-    main()
-  File "main.py", line 53, in main
-    raise Exception("Sorry, CUDA is neccessary.")
-Exception: Sorry, CUDA is neccessary.

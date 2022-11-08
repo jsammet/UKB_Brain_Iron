@@ -8,7 +8,7 @@ class Conv_Block(nn.Module):
         super().__init__()
         self.conv_block = nn.Sequential(
             nn.Conv3d(in_channels, out_channels, kernel_size=3, padding=1, bias=False),
-            nn.ReLU(inplace=True)
+            nn.LeakyReLU(inplace=True)
         )
 
     def forward(self, x):
@@ -21,7 +21,7 @@ class Conv_Pool_Block(nn.Module):
         self.conv_block = nn.Sequential(
             nn.Conv3d(in_channels, out_channels, kernel_size=3, padding=0, bias=False),
             nn.MaxPool3d(2),
-            nn.ReLU(inplace=True)
+            nn.LeakyReLU(inplace=True)
         )
 
     def forward(self, x):
@@ -44,7 +44,8 @@ class Iron_NN(nn.Module):
         self.down4 = Conv_Block(channel_num[3], channel_num[4])
         self.down5 = Conv_Block(channel_num[4], channel_num[5])
         self.dropout = nn.Dropout(0.5)
-        self.down6 = Conv_Block(64, 32)
+        self.lastconv = nn.Conv3d(64, 32, kernel_size=3, padding=1, bias=False)
+        self.lastRELU = nn.LeakyReLU(inplace=True)
         self.fc1 = nn.Linear(32*14*16*1, 128)
         self.fc2 = nn.Linear(128, 64)
         self.fc3 = nn.Linear(64, class_nb)
@@ -58,7 +59,8 @@ class Iron_NN(nn.Module):
         x5 = self.down4(x4)
         x6 = self.down5(x5)
         x6_ = self.dropout(x6)
-        x7 = self.down6(x6_)
+        x7 = self.lastconv(x6_)
+        x7 = self.lastRELU(x7)
         x7_ = x7.view(-1, 32*14*16)
         x8 = self.fc1(x7_)
         x9 = self.fc2(x8)
