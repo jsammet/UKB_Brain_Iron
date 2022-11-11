@@ -11,6 +11,7 @@ from torch import nn, optim
 import torch
 from netneurotools import stats
 from scipy import stats
+import pdb
 
 def shuffle_along_axis(a, axis):
     idx = np.random.rand(*a.shape).argsort(axis=axis)
@@ -32,6 +33,8 @@ def main():
     C_ = cp.expand_dims(cp.array(label_file.iloc[:, 1:]), axis=1)[:,0,:]
     result_img = np.empty([256,288,48])
     shuffle_img = np.empty([256,288,48])
+    pval_img = np.empty([256,288,48])
+    shuffle_pval_img = np.empty([256,288,48])
     age_img = np.empty([256,288,48])
     sex_img = np.empty([256,288,48])
 
@@ -63,6 +66,11 @@ def main():
         beta_s = cp.reshape(beta_[2], (2,288,48))
         print("Adding to sex image")
         sex_img[curr_vox:curr_vox+2,:,:] = cp.asnumpy(beta_s)
+        iron_pval = cp.empty(beta_.shape[1])
+        for j in range(beta_.shape[1]):
+            iron_pval[j] = 2 * stats.norm.cdf(cp.asnumpy(-abs(beta_[0,j]) / cp.std(beta_[:,j])))
+        pval_img[curr_vox:curr_vox+2,:,:] = np.reshape(cp.asnumpy(iron_pval), (2,288,48))
+        
 
     print("Save beta images")
     ni_img = nib.Nifti1Image(result_img, affine=np.eye(4))
@@ -72,11 +80,14 @@ def main():
     ni_img = nib.Nifti1Image(sex_img, affine=np.eye(4))
     nib.save(ni_img, "results/linear_model_sex_map"+".nii")
 
+    ni_img = nib.Nifti1Image(pval_img, affine=np.eye(4))
+    nib.save(ni_img, "results/linear_model_iron_pval"+".nii")
+
     print("---------------------------------------------START SHUFFLE---------------------------------------------")
     Y_full = np.asarray(Y_full.data)
     Y_full = shuffle_along_axis(Y_full, axis=0)
     
-    for i in range(128): #256 divided by 4
+    for i in range(128): #256 divided by 2
         curr_vox = i*2
         print(f"Current state: {curr_vox} of 256")
         Y_ = cp.asarray(Y_full[:,curr_vox:curr_vox+2,:,:])
@@ -91,25 +102,20 @@ def main():
         print("Beta calculated, adding to result image")
         shuffle_img[curr_vox:curr_vox+2,:,:] = cp.asnumpy(beta_r)
 
+        # Calculate p-values
+        iron_pval = cp.empty(beta_.shape[1])
+        for j in range(beta_.shape[1]):
+            iron_pval[j] = 2 * stats.norm.cdf(cp.asnumpy(-abs(beta_[0,j]) / cp.std(beta_[:,j])))
+        shuffle_pval_img[curr_vox:curr_vox+2,:,:] = np.reshape(cp.asnumpy(iron_pval), (2,288,48))
+
     ni_img = nib.Nifti1Image(shuffle_img, affine=np.eye(4))
     nib.save(ni_img, "results/linear_model_shuffle_map"+".nii")
+    ni_img = nib.Nifti1Image(shuffle_pval_img, affine=np.eye(4))
+    nib.save(ni_img, "results/linear_model_shuffle_pval"+".nii")
     example = np.ravel(result_img)
     np.savetxt('iron_beta_lin_model.csv', example, delimiter=",")
     example = np.ravel(shuffle_img)
     np.savetxt('iron_beta_shuffle.csv', example, delimiter=",")
-
-    stat_res=np.zeros([2,16*18*4])
-    for i in range(16): #256/16 
-        for j in range(18): #288/16 
-            for k in range(4): #48/12
-                stat_, pval_ = stats.ttest_ind(a=shuffle_img[i*16:i*16+16,j*18+j*18+18,k*4:k*4+4], b=result_img[i*16:i*16+16,j*18+j*18+18,k*4:k*4+4], equal_var=True)
-                pos_ = i*j*k + j*k + k
-                print(f"The stat: {stat_} and the pval: {pval_}")
-                stat_res[0,pos_] = stat_
-                stat_res[1,pos_] = pval_
-
-    df = pd.DataFrame(stat_res, columns = ['Statistics','P_Val'])
-    df.to_csv('iron_beta_ttest.csv')
 
     
 

@@ -18,11 +18,11 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 
 def main():
     params = {
-        'iron_measure':'mean_corp_hb', #'Hct_percent' 'hb_concent'  'mean_corp_hb'
+        'iron_measure':'hb_concent', #'Hct_percent' 'hb_concent'  'mean_corp_hb'
         'test_percent': 0.1,
         'val_percent': 0.04,
         'batch_size': 20,
-        'nb_epochs': 30,
+        'nb_epochs': 60,
         'num_workers': 16,
         'shuffle': True,
         'lr': 1e-4,
@@ -30,13 +30,14 @@ def main():
         'class_nb': 3,
         'channels': [32, 64, 128, 256, 256, 64],
         'model_dir': 'src/models',
-        'test_file': 'results/test_GradCam_',
-        'sal_maps': 'results/GradCam_maps',
+        'test_file': 'results/test_sal_hb_',
+        'sal_maps': 'results/sal_maps',
         'image_path':'../SWI_images',
         'label_path':'swi_brain_vol_info.csv',
         'device': 'cuda',
         'sal_batch': 1,
-        'sal_workers': 1
+        'sal_workers': 1,
+        'activation_type': 'GuidedGradCam' # IntegratedGradient GuidedGradCam Occlusion
     }
     print(params)
 
@@ -81,7 +82,7 @@ def main():
     # train model
     model, history = trainer(model, dataset, train_indices, params, optimizer, criterion, scheduler, percentile_val)
     df = pd.DataFrame(data={"ID": list(range(len(history['train_loss']))), "train_loss": history['train_loss'], "valid_loss": history['valid_loss']})
-    df.to_csv("results/train_valid_IntGrad_"+str(params['nb_epochs'])+'_'+str(params['class_nb'])+'class_'+ \
+    df.to_csv("results/train_valid_" + params['activation_type'] + "_" +str(params['nb_epochs'])+'_'+str(params['class_nb'])+'class_'+ \
         "_"+str(params['lr'])+params['iron_measure']+".csv", sep=',',index=False)
 
     # evaluate on test set

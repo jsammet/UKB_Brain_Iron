@@ -130,6 +130,7 @@ colnames(swi_df) <- c('ID')
 swi_df$ID <- as.integer(swi_df$ID)
 
 full_file <- read.csv("final_brain_vol_info.csv")
+View(full_file)
 y <- full_file$f.25881.2.0
 x <- full_file$mean_corp_hb
 plot(y,x,abline(lm(x~y)))

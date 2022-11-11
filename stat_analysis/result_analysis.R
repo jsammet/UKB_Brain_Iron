@@ -15,7 +15,7 @@ max(full_file$mean_corp_hb)
 min(full_file$mean_corp_hb)
 ( ceiling(max(full_file$mean_corp_hb)) - floor(min(full_file$mean_corp_hb)) )/100
 
-results <- read.csv("/home/jsammet/mnt_ox/UKB_Brain_Iron/results/test_moreClasses_10class_60_0.0001_5e-07_hb_concent.csv")
+results <- read.csv("/home/jsammet/mnt_ox/UKB_Brain_Iron/results/test_moreClasses_3class_25_0.0001_5e-07_mean_corp_hb.csv")
 View(results)
 sd(results$True_Label)
 min(results$True_Label)

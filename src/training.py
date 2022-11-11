@@ -7,10 +7,10 @@ import time
 import nibabel as nib
 
 from .loss import loss_func
-from torch.utils.data.sampler import RandomSampler, WeightedRandomSampler
+from torch.utils.data.sampler import RandomSampler
 from torch.utils import data
-from captum.attr import IntegratedGradients
-from captum.attr import visualization as viz
+from captum.attr import GuidedGradCam, IntegratedGradients, Occlusion
+from captum.attr._utils import visualization as viz
 
 import pdb
 
@@ -168,9 +168,13 @@ def test_saliency(model, dataset, indices, params):
     device = torch.device(params['device'])
 
     print("---------------------------------------------START SALIENCY MAP AND TEST---------------------------------------------")
-    #model = torch.nn.DataParallel(model, device_ids=[0])
     model.eval()
-    ig = IntegratedGradients(model)
+    if params['activation_type'] == 'GuidedGradCam':
+        activity_model = GuidedGradCam(model, model.module.lastconv, device_ids=[0, 1, 2, 3])
+    elif params['activation_type'] == 'IntegratedGradient':
+        activity_model = IntegratedGradients(model)
+    elif['activation_type'] == 'Occlusion':
+        activity_model = Occlusion(model)
     with torch.no_grad():
     # go through test set
         for image, label_true, label_val, name, aff_mat in test_loader:
@@ -180,11 +184,24 @@ def test_saliency(model, dataset, indices, params):
             # Set the requires_grad_ to the image for retrieving gradients
             image.requires_grad_()
             # Integrated Gradients
-            attribution = ig.attribute(image, target=label_true, internal_batch_size=4)
-            attribution = attribution.squeeze(0).squeeze(0)
-            #print(f"Image {name.item()} and image shape: {attribution.size()}")
+            if params['activation_type'] == 'GuidedGradCam':
+                attribution = activity_model.attribute(image, target=label_true)
+            elif params['activation_type'] == 'IntegratedGradient':
+                attribution = activity_model.attribute(image, target=label_true, internal_batch_size=4)
+            elif['activation_type'] == 'Occlusion':
+                attribution = activity_model.attribute(image, target=label_true, sliding_window_shapes=(3,3))
+
+            attribution = create_attr_map(attribution)
+            
             attr_img = attribution.cpu().numpy()
-            ni_img = nib.Nifti1Image(attr_img, affine=np.eye(4)) #aff_mat.cpu().numpy()[0])
-            nib.save(ni_img, os.path.join(params['sal_maps'],str(name.item())+"_"+params['iron_measure']+"_"+str(params['class_nb'])+"_classes"+".nii"))
+            ni_img = nib.Nifti1Image(attr_img, affine=aff_mat.cpu().numpy()[0])
+            nib.save(ni_img, os.path.join(params['sal_maps'],params['activation_type'] + "_" + str(name.item())+"_"+params['iron_measure']+"_"+str(params['class_nb'])+"_classes"+".nii"))
 
     return 0
+
+# Took central concepts from captum.attr.visualization.visualize_image_attr
+def create_attr_map(image, outlier_perc=2):
+    image = image.squeeze(0).squeeze(0)
+    threshold = viz._cumulative_sum_threshold(np.abs(image), 100 - outlier_perc)
+    img_norm = image / threshold
+    return np.clip(img_norm, -1, 1)
