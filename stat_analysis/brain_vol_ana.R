@@ -30,7 +30,7 @@ reduce_file <- full_file %>% select('f.eid','f.31.0.0', "f.21003.2.0",
                                     "f.25757.2.0")	##	Scanner transverse (Y) brain position	## Date of all cause dementia report
 View(reduce_file)
 
-file_noNA <- na.omit(reduce_file)
+file_noNA <- reduce_file[complete.cases(reduce_file), ] 
 View(file_noNA)
 
 # Renaming for understandability
@@ -50,10 +50,14 @@ file_cor <- file_fin %>% select('sex','age',"mean_corp_hb", "mean_corp_hb_concen
                                 "T2star_hipp_L",	"T2star_hipp_R","T2star_palli_L","T2star_palli_R", "T2star_put_L","T2star_put_R", "T2star_tha_L", "T2star_tha_R")
 View(file_cor)
 #Associations Heatmap: self correlation
-COR_comp <- cor(file_cor,file_cor, use="pairwise", method="spearman")
-CorrPlot <- cor.plot(COR_comp,numbers=TRUE,colors=TRUE,n=100,main="Blood-T2* correlation",zlim=c(-1,1), show.legend=TRUE, diag=FALSE, labels=NULL,n.legend=10,keep.par=TRUE,select=NULL,pval=c(0.001, 0.01, 0.05),cuts=c(.001,.01),cex.axis=0.5,stars=TRUE)
+COR_comp <- cor(file_cor,file_cor, method="parson")
+file_cor$sex <- as.numeric(file_cor$sex)
+file_cor$age <- as.numeric(file_cor$age)
+rs <- corr.test(COR_comp, method="spearman")
+CorrPlot <- cor.plot(COR_comp,numbers=TRUE,colors=TRUE,main="Blood-T2* correlation",zlim=c(-1,1),n.legend=10,cex.axis=1,cex=0.75,stars=TRUE)
 
-s#DO a regression
+
+#DO a regression
 x <- file_cor$Hct_percent
 y <- file_cor$T2star_amyg_L
 x_plus <- x#+file_cor$age+file_cor$sex
@@ -61,7 +65,7 @@ relation <- lm(y~x_plus)
 # Plot the chart.
 plot(x_plus,y,col = "blue",main = "T2star_amyg_L & Hct_percent",
      abline(relation),xlab = "Hct_percent",ylab = "T2star_amyg_L")
-
+View(file_cor)
 # DO regression over all areas
 for (names_ in colnames(file_cor)) {
   print(names_)
@@ -70,7 +74,7 @@ for (names_ in colnames(file_cor)) {
     y <- file_cor[ , names_]
     relation <- lm(y~x)
     # Plot the chart.
-    plot(y,x,col = "blue",main = sprintf("%s & hb_concent",names_),
+    plot(y,x,col=rgb(red=0.0, green=0.0, blue=1.0, alpha=0.2),main = sprintf("%s & hb_concent",names_),
          abline(lm(x~y)),xlab = "hb_concent",ylab = names_)
   }}
 
@@ -82,7 +86,7 @@ for (names_ in colnames(file_cor)) {
     x <- file_cor[ , names_]
     relation <- lm(y~x+file_cor$age+file_cor$sex)
     # Plot the chart.
-    plot(y,x,col = "blue",main = sprintf("%s & T2star_hipp_L",names_),
+    plot(y,x,col=rgb(red=0.0, green=0.0, blue=1.0, alpha=0.2),main = sprintf("%s & T2star_hipp_L",names_),
          abline(lm(x~y)),xlab = names_,ylab = "T2star_hipp_L")
   }}
 
@@ -120,6 +124,11 @@ save(PCAscores, file="DatafilePCA_noNA.RData")
 # Save altered and optimized data file
 write.csv(file_fin,'final_brain_vol_info.csv')
 
+
+
+
+
+
 # Create script to only have table entries where a images exists
 img_list <- list.files(path="../../SWI_images")
 swi_imgs <- data.frame(matrix(unlist(img_list), nrow=length(img_list), byrow=TRUE))
@@ -131,10 +140,69 @@ swi_df$ID <- as.integer(swi_df$ID)
 
 full_file <- read.csv("final_brain_vol_info.csv")
 View(full_file)
+
+h <- hist(full_file$hb_concent, breaks=100)
+cuts <- cut(h$breaks, c(-Inf,12.72, 13.21, 13.54, 13.86, 14.17, 14.47, 14.82, 15.21, 15.8,Inf))
+
+# plot the histogram with the colours
+plot(h, col=c("green","red","gray","blue","orange","cyan","white","black","yellow","pink")[cuts],main="Hb concentration in 1ß percentiles")
+
+#plot histogram
 y <- full_file$f.25881.2.0
 x <- full_file$mean_corp_hb
 plot(y,x,abline(lm(x~y)))
 full_file <- rename(full_file,'ID' = 'f.eid')
 swi_joint <- merge(x = swi_df, y = full_file, by = "ID")
 View(swi_joint)
+hist(swi_joint$erythrocyte_dist_wdt, breaks=60)
+
+median(swi_joint$age)
+sd(swi_joint$age)
+min(swi_joint$mean_corp_hb)
+max(swi_joint$mean_corp_hb)
+table(swi_joint$sex)
+
 write.csv(swi_joint,'swi_brain_vol_info.csv')
+
+### Additional file
+full_file <- read.csv("../../UKB_brain_mri_raw/ukb51917_T2_MRIvar_filt_v3.tab", sep="\t")
+View(full_file)
+full_file <- rename(full_file,'ID' = 'f.eid')
+# CORRECTION FOR SCAN MEASURES
+reduce_file <- full_file %>% select("ID",
+                                    "f.25756.2.0",	##	Scanner lateral (X) brain position	T1 structural brain MRI
+                                    "f.25758.2.0",	##	Scanner longitudinal (Z) brain position	T1 structural brain MRI
+                                    "f.25759.2.0",	##	Scanner table position	T1 structural brain MRI
+                                    "f.25757.2.0",	##	Scanner transverse (Y) brain position
+                                    "f.25738.2.0",  ##  T1 SWI image difference
+                                    "f.25000.2.0",  ##  head volumne
+                                    "f.4990.2.0",   ##  fluid intelligence
+                                    ## negative controls
+                                    "f.1747.2.0",#,  ## hair colour
+                                    "f.54.2.0") ## assessment centre
+                                    #"f.796.2.0")   ## distance to work
+file_fin <- rename(reduce_file, 'Scan_lat_X' = "f.25756.2.0", 'Scan_long_Z' = "f.25758.2.0", 'Scan_table_pos' = "f.25759.2.0",
+                   'Scan_trans_Y' = "f.25757.2.0", 'T1_SWI_diff' = "f.25738.2.0", "fluid_int"="f.4990.2.0",
+                   'head_vol' = "f.25000.2.0", 'hair_col' = "f.1747.2.0", 'assess_centre'='f.54.2.0')#, 'dis_to_work' = "f.769.2.0")
+swi_file <- read.csv('../swi_brain_vol_info.csv')
+swi_joint <- merge(x = swi_file, y = file_fin, by = "ID",x.all=TRUE)
+swi_joint <- subset(swi_joint, select = -c(X.1))
+View(swi_joint)
+write.csv(swi_joint,'swi_brain_vol_info_additional.csv')
+swi_joint <- read.csv('swi_brain_vol_info_additional.csv')
+table(swi_joint$assess_centre)
+swi_joint$fluid_int[is.na(swi_joint$fluid_int)] <- 0
+table(swi_joint$fluid_int)
+
+
+hist(swi_joint$hb_concent, breaks=100, xlab = "Hb concentration", main = "Distribution of hb concentration")
+hist(swi_joint$mean_corp_hb, breaks=100, xlab = "Mean corpuscular hb", main = "Distribution of mean corpuscular hb")
+hist(swi_joint$Hct_percent, breaks=100, xlab = "Hematocrit concentration", main = "Distribution of hematocrit concentration")
+
+y <- full_file$f.25881.2.0
+x <- full_file$mean_corp_hb
+plot(y,x,abline(lm(x~y)))
+full_file <- rename(full_file,'ID' = 'f.eid')
+swi_joint <- merge(x = swi_df, y = full_file, by = "ID")
+
+table(swi_joint$sex)

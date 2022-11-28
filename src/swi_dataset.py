@@ -40,6 +40,7 @@ class swi_dataset(data.Dataset):
         img_path = os.path.join(self.img_dir, str(self.label_file.iloc[index, 0])+'_SWI.nii.gz')
         nifti_img = nib.load(img_path)
         image = np.asarray(nifti_img.get_fdata())
+        # image = np.flip(image, axis=0).copy()
         image = image[np.newaxis, ...]
 
         # Create label information accordingly

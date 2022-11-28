@@ -5,12 +5,16 @@ import numpy as np
 import pandas as pd
 import time
 import nibabel as nib
+from typing import Union
 
 from .loss import loss_func
 from torch.utils.data.sampler import RandomSampler
 from torch.utils import data
-from captum.attr import GuidedGradCam, IntegratedGradients, Occlusion
+from captum.attr import GuidedGradCam, IntegratedGradients, Occlusion, LayerGradCam, NoiseTunnel
 from captum.attr._utils import visualization as viz
+from captum.attr._utils import attribution as attr_
+# Import M3d-CAM
+from medcam import medcam
 
 import pdb
 
@@ -91,7 +95,7 @@ def trainer(model, dataset, indices, params, optimizer, criterion, scheduler, pe
                 label_true = label_true.float().to(device)
                 label_pred = model(image)
                 # calculate total loss
-                loss = criterion(label_pred.squeeze(1), label_true)
+                loss = criterion(label_pred, label_true) #loss = criterion(label_pred.squeeze(1), label_true)
                 valid_loss += loss
 
             # Leraning Rate Scheduler
@@ -109,7 +113,7 @@ def trainer(model, dataset, indices, params, optimizer, criterion, scheduler, pe
             print(' - '.join((epoch_info, time_info)), flush=True)
 
       # final model save
-    torch.save(model.state_dict(),os.path.join(params['model_dir'], str(params['nb_epochs'])+'_'+str(params['class_nb'])+'class_'+ \
+    torch.save(model.state_dict(keep_vars=True),os.path.join(params['model_dir'], str(params['nb_epochs'])+'_'+str(params['class_nb'])+'class_'+ \
         "_"+str(params['lr'])+"_"+str(params['alpha'])+"_"+params['iron_measure']+'final%04d.pt' % epoch))
     return model, history
 
@@ -141,7 +145,7 @@ def tester(model, dataset, indices, params,criterion):
                 test_val.append(label_val[i].item())
                 test_name.append(name[i].item())
             # calculate total loss
-            loss = criterion(label_pred.squeeze(1), label_true)
+            loss = criterion(label_pred, label_true) #loss = criterion(label_pred.squeeze(1), label_true)
             print(loss)
             test_loss += loss
 
@@ -153,8 +157,8 @@ def tester(model, dataset, indices, params,criterion):
     print(f'Final test result: \t\t Test set loss - CE Loss: {test_loss}')
 
     df = pd.DataFrame(data={"ID": list(range(len(test_pred))),"Name": test_name, "Orig. true val": test_val, "Prediction": test_pred, "True_Label": test_true})
-    df.to_csv(params['test_file']+str(params['class_nb'])+'class_'+str(params['nb_epochs'])+ \
-        "_"+str(params['lr'])+"_"+str(params['alpha'])+"_"+params['iron_measure']+".csv", sep=',',index=False)
+    df.to_csv(params['test_file']+"_"+params['activation_type']+"_"+params['iron_measure']+"_"+str(params['class_nb'])+'class_'+str(params['nb_epochs'])+ \
+        "_"+str(params['lr'])+"_"+str(params['alpha'])+".csv", sep=',',index=False)
 
     return 0
 
@@ -168,13 +172,22 @@ def test_saliency(model, dataset, indices, params):
     device = torch.device(params['device'])
 
     print("---------------------------------------------START SALIENCY MAP AND TEST---------------------------------------------")
+    USE_CUDA = True
+    WORLD_SIZE = 5
     model.eval()
     if params['activation_type'] == 'GuidedGradCam':
-        activity_model = GuidedGradCam(model, model.module.lastconv, device_ids=[0, 1, 2, 3])
+        model = GuidedGradCam(model, model.module.lastconv, device_ids=[0, 1, 2, 3])
     elif params['activation_type'] == 'IntegratedGradient':
-        activity_model = IntegratedGradients(model)
-    elif['activation_type'] == 'Occlusion':
-        activity_model = Occlusion(model)
+        model = IntegratedGradients(model,multiply_by_inputs=True)
+    elif params['activation_type'] == 'NT_IntGrad':
+        model = IntegratedGradients(model,multiply_by_inputs=True)
+        model = NoiseTunnel(model)
+    elif params['activation_type'] == 'Occlusion':
+        model = Occlusion(model)
+    elif params['activation_type'] == 'LayerGradCam':
+        model = LayerGradCam(model,  model.module.lastconv, device_ids=[0, 1, 2, 3])
+    elif params['activation_type'] == 'medcam':
+        model = medcam.inject(model, backend='gcampp', layer='module.lastconv', return_attention=True) #, layer='module.lastconv'
     with torch.no_grad():
     # go through test set
         for image, label_true, label_val, name, aff_mat in test_loader:
@@ -182,26 +195,41 @@ def test_saliency(model, dataset, indices, params):
             label_true = label_true.float().to(device)
             label_true = label_true.argmax(dim=1)
             # Set the requires_grad_ to the image for retrieving gradients
-            image.requires_grad_()
+            image.requires_grad_().cpu()
             # Integrated Gradients
             if params['activation_type'] == 'GuidedGradCam':
-                attribution = activity_model.attribute(image, target=label_true)
+                print(f"max. value of image {np.max(image.cpu().numpy())}, max. value of image {np.min(image.cpu().numpy())} and max. value of image {np.shape(image.cpu().numpy())}")
+                attribution = model.attribute(image, target=label_true,interpolate_mode='trilinear')
             elif params['activation_type'] == 'IntegratedGradient':
-                attribution = activity_model.attribute(image, target=label_true, internal_batch_size=4)
-            elif['activation_type'] == 'Occlusion':
-                attribution = activity_model.attribute(image, target=label_true, sliding_window_shapes=(3,3))
-
-            attribution = create_attr_map(attribution)
+                attribution = model.attribute(image, target=label_true, internal_batch_size=4)
+            elif params['activation_type'] == 'NT_IntGrad':
+                attribution = model.attribute(image, nt_type='smoothgrad', nt_samples=5, nt_samples_batch_size=1, internal_batch_size=6, target=label_true)
+            elif params['activation_type'] == 'Occlusion':
+                attribution = model.attribute(image, target=label_true, strides=(16,16,4),sliding_window_shapes=(1,32,32,8), show_progress=True)
+            elif params['activation_type'] == 'LayerGradCam':
+                attribution = model.attribute(image, target=label_true, relu_attributions=True)
+                attribution = attr_.LayerAttribution.interpolate(attribution, (1, 1, 256,288,48))
+            elif params['activation_type'] == 'medcam':
+                attribution = model(image)
+                attribution = attribution[1].squeeze(0).squeeze(0)
+                attribution = attribution.cpu().numpy()
+                print(np.any(np.isnan(attribution)))
             
-            attr_img = attribution.cpu().numpy()
-            ni_img = nib.Nifti1Image(attr_img, affine=aff_mat.cpu().numpy()[0])
+            if params['activation_type'] != 'medcam':
+                attribution = create_attr_map(attribution)
+            
+            attr_img = attribution
+            #for i in range(len(label_true)):
+            ni_img = nib.Nifti1Image(attr_img, affine=aff_mat[0].cpu().numpy())
             nib.save(ni_img, os.path.join(params['sal_maps'],params['activation_type'] + "_" + str(name.item())+"_"+params['iron_measure']+"_"+str(params['class_nb'])+"_classes"+".nii"))
+            print(f"Finished f{str(name.item())}")
 
     return 0
 
 # Took central concepts from captum.attr.visualization.visualize_image_attr
-def create_attr_map(image, outlier_perc=2):
+def create_attr_map(image, outlier_perc: Union[int, float] = 2):
     image = image.squeeze(0).squeeze(0)
-    threshold = viz._cumulative_sum_threshold(np.abs(image), 100 - outlier_perc)
-    img_norm = image / threshold
-    return np.clip(img_norm, -1, 1)
+    image = image.cpu().numpy()
+    # _threshold = viz._cumulative_sum_threshold(np.abs(image), 100 - outlier_perc)
+    # img_norm = image / _threshold
+    return viz._normalize_scale(image, viz._cumulative_sum_threshold(np.abs(image), 100 - outlier_perc))

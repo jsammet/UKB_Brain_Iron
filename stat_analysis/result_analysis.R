@@ -15,7 +15,7 @@ max(full_file$mean_corp_hb)
 min(full_file$mean_corp_hb)
 ( ceiling(max(full_file$mean_corp_hb)) - floor(min(full_file$mean_corp_hb)) )/100
 
-results <- read.csv("/home/jsammet/mnt_ox/UKB_Brain_Iron/results/test_moreClasses_3class_25_0.0001_5e-07_mean_corp_hb.csv")
+results <- read.csv("/home/jsammet/mnt_ox/UKB_Brain_Iron/results/test__medcam_hb_concent_3class_100_0.0001_5e-07.csv")
 View(results)
 sd(results$True_Label)
 min(results$True_Label)
@@ -98,12 +98,12 @@ confusionMatrix(data = as.factor(results$Prediction), reference = as.factor(resu
 mosaicplot(table(results$Prediction, results$True_Label),xlab="Prediction",ylab="True Label",shade = TRUE)
 
 # Plot loss
-loss <- read.csv("/home/jsammet/mnt_ox/UKB_Brain_Iron/results/train_valid_oneD_60_3class__0.0001mean_corp_hb.csv")
+loss <- read.csv("/home/jsammet/mnt_ox/UKB_Brain_Iron/results/train_valid_medcam_100_3class__0.0001hb_concent.csv")
 View(loss)
-plot(loss$ID,loss$train_loss,type = "l", lty = 1,col="red",xlab="epochs",ylab="Cross_entropy Loss",main="3 class: Loss during training & validation")
+plot(loss$ID,loss$train_loss,type = "l", lty = 1,col="red",xlab="epochs",ylab="Cross_entropy Loss",main="3 class: Loss during training & validation",xlim=c(0,100),ylim=c(0.5,1.15))
 lines(loss$ID,loss$valid,type = "l", lty = 1,col="green")
 legend(x = "topright",   # Position
-       inset = 0.1,
+       inset = 0.1, cex=1.5,
        legend = c("train loss", "valid loss"),  # Legend texts
        lty = c(1, 1),           # Line types
        col = c(2, 3),           # Line colors
@@ -131,3 +131,16 @@ shuffle_ <- read.csv("/home/jsammet/mnt_ox/UKB_Brain_Iron/iron_beta_shuffle.csv"
 View(beta_)
 max(beta_)
 
+# Volcano plot betas and p values
+pval_ <- read.csv("/home/jsammet/mnt_ox/UKB_Brain_Iron/iron_pval_lin_model.csv")
+betas_ <- read.csv("/home/jsammet/mnt_ox/UKB_Brain_Iron/iron_beta_lin_model.csv")
+data <- data.frame(pval_, betas_)
+colnames(data) <- c('pval_','betas_')
+x_replace <- data$pval_
+x_replace[is.nan(x_replace)] <- 1
+data$pval_ <- x_replace
+p1 <- ggplot(data, aes(pval_, betas_)) + # -log10 conversion  
+  geom_point(size = 2/5) +
+  xlab(expression("p values")) + 
+  ylab(expression("betas"))
+p1

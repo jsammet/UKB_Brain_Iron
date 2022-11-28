@@ -5,39 +5,40 @@ import pandas as pd
 import nibabel as nib
 from captum.attr import Saliency
 
-from src.model import Iron_NN
+from src.model import Iron_NN, Iron_NN_orig
 from src.swi_dataset import swi_dataset
 from src.training import trainer, tester, test_saliency
-from src.loss import loss_func, weight_calc
+from src.loss import loss_func, weight_calc, my_KLDivLoss
 import torch
 from torch import nn
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torchinfo import summary
 import pdb
 from torch.nn.parallel import DistributedDataParallel as DDP
+from medcam import medcam
 
 def main():
     params = {
         'iron_measure':'hb_concent', #'Hct_percent' 'hb_concent'  'mean_corp_hb'
         'test_percent': 0.1,
         'val_percent': 0.04,
-        'batch_size': 20,
-        'nb_epochs': 60,
-        'num_workers': 16,
+        'nb_epochs': 100,
+        'batch_size': 30,
+        'num_workers': 20,
         'shuffle': True,
         'lr': 1e-4,
         'alpha': 5e-7,
-        'class_nb': 3,
+        'class_nb': 10,
         'channels': [32, 64, 128, 256, 256, 64],
         'model_dir': 'src/models',
-        'test_file': 'results/test_sal_hb_',
-        'sal_maps': 'results/sal_maps',
+        'test_file': 'results/test_',
+        'sal_maps': 'results/GradCam_maps', # nt_maps GradCam_maps flip_maps IntGrad_Maps
         'image_path':'../SWI_images',
         'label_path':'swi_brain_vol_info.csv',
         'device': 'cuda',
         'sal_batch': 1,
         'sal_workers': 1,
-        'activation_type': 'GuidedGradCam' # IntegratedGradient GuidedGradCam Occlusion
+        'activation_type': 'medcam' # IntegratedGradient GuidedGradCam Occlusion LayerGradCam NT_IntGrad medcam
     }
     print(params)
 
@@ -72,13 +73,13 @@ def main():
         device = torch.device(params['device'])
         model=Iron_NN(params['channels'],params['class_nb']).to(device)
         print(summary(model, input_size=(1,1,256,288,48))) # batch size set to 1 instead params['batch_size']
-        model = nn.DataParallel(model, device_ids=[0, 1, 2, 3])
+        model = nn.DataParallel(model, device_ids=[0, 1, 2, 3, 4])
         criterion = loss_func(params['alpha']).to(device)
         optimizer = torch.optim.Adam(model.parameters(), lr=params['lr'])
         scheduler = ReduceLROnPlateau(optimizer, 'min', patience=3)
     else:
         raise Exception("Sorry, CUDA is neccessary.")
-
+    
     # train model
     model, history = trainer(model, dataset, train_indices, params, optimizer, criterion, scheduler, percentile_val)
     df = pd.DataFrame(data={"ID": list(range(len(history['train_loss']))), "train_loss": history['train_loss'], "valid_loss": history['valid_loss']})
@@ -87,9 +88,9 @@ def main():
 
     # evaluate on test set
     tester(model, dataset, test_indices, params, criterion)
-
+    
     # saliency retrival
-    test_saliency(model, dataset, test_indices, params)
+    # test_saliency(model, dataset, test_indices, params)
 
 if __name__ == "__main__":
     main()
