@@ -2,6 +2,7 @@ library(dplyr)
 library(psych)
 library(nFactors)
 library(base)
+library(corrplot)
 
 setwd(dirname(rstudioapi::getSourceEditorContext()$path))
 getwd()
@@ -9,6 +10,12 @@ getwd()
 full_file <- read.csv("../../UKB_brain_mri_raw/ukb51917_T2_MRIvar_RBC-IDP_all.tab", sep="\t")
 View(full_file)
 
+dementia_file <- full_file %>% dplyr:: select(starts_with('f.eid') | 
+                                                starts_with("f.42018") | ## Date of all cause dementia report
+                                                starts_with("f.42019") | ## Source of all cause dementia report
+                                                starts_with("f.42020") | ## Date of alzheimer's disease report
+                                                starts_with("f.42021")) ## Source of alzheimer's disease report
+View(dementia_file)
 # get rid of unwanted columns for better overview
 reduce_file <- full_file %>% select('f.eid','f.31.0.0', "f.21003.2.0",
                                     "f.30050.2.0",	##	Mean corpuscular haemoglobin
@@ -45,18 +52,30 @@ file_fin <- rename(file_noNA,'ID' = 'f.eid', 'sex'='f.31.0.0','age'="f.21003.2.0
                    "scan_lat"="f.25756.2.0","scan_long"="f.25758.2.0","scan_tab"="f.25759.2.0","scan_trans"="f.25757.2.0")
 View(file_fin)
 
+# Plot distribution of blood measures
+hist(file_fin$erythrocyte_dist_wdt, breaks=60,cex.axis=1.5,cex.lab=1.5, cex.main=1.5, xlab = "Erythrocyte distribution width", main="Histogram of Erythrocyte distribution width")
+
 file_cor <- file_fin %>% select('sex','age',"mean_corp_hb", "mean_corp_hb_concent","mean_corp_vol", "Hct_percent","hb_concent", "erythrocyte_cnt",
                                 "erythrocyte_dist_wdt","T2star_acc_L", "T2star_acc_R", "T2star_amyg_L","T2star_amyg_R", "T2star_caud_L", "T2star_caud_R",
                                 "T2star_hipp_L",	"T2star_hipp_R","T2star_palli_L","T2star_palli_R", "T2star_put_L","T2star_put_R", "T2star_tha_L", "T2star_tha_R")
 View(file_cor)
 #Associations Heatmap: self correlation
-COR_comp <- cor(file_cor,file_cor, method="parson")
+COR_comp <- cor(file_cor,file_cor, method="pearson")
 file_cor$sex <- as.numeric(file_cor$sex)
 file_cor$age <- as.numeric(file_cor$age)
 rs <- corr.test(COR_comp, method="spearman")
 CorrPlot <- cor.plot(COR_comp,numbers=TRUE,colors=TRUE,main="Blood-T2* correlation",zlim=c(-1,1),n.legend=10,cex.axis=1,cex=0.75,stars=TRUE)
 
+testRes = cor.mtest(COR_comp, conf.level = 0.95)
 
+pAdj <- p.adjust(c(testRes[[1]]), method = "bonferroni")
+resAdj <- matrix(pAdj, ncol = dim(testRes[[1]])[1])
+
+rownames(resAdj) <- rownames(testRes$p)
+colnames(resAdj) <- colnames(testRes$p)
+
+corrplot(COR_comp, p.mat = resAdj, sig.level = 0.05, method='color', diag=FALSE, addCoef.col ='black', number.cex = 1.0, insig='blank')
+par(mar=c(5,6,4,1)+.1)
 #DO a regression
 x <- file_cor$Hct_percent
 y <- file_cor$T2star_amyg_L
@@ -64,7 +83,7 @@ x_plus <- x#+file_cor$age+file_cor$sex
 relation <- lm(y~x_plus)
 # Plot the chart.
 plot(x_plus,y,col = "blue",main = "T2star_amyg_L & Hct_percent",
-     abline(relation),xlab = "Hct_percent",ylab = "T2star_amyg_L")
+     abline(relation),xlab = "Hct_percent",ylab = "T2star_amyg_L",)
 View(file_cor)
 # DO regression over all areas
 for (names_ in colnames(file_cor)) {
@@ -72,11 +91,12 @@ for (names_ in colnames(file_cor)) {
   if (startsWith(names_,"T2star")) {
     x <- file_cor$hb_concent
     y <- file_cor[ , names_]
-    relation <- lm(y~x)
+    relation <- lm(y~x+file_cor$sex+file_cor$age)
+    summary(relation)
     # Plot the chart.
-    plot(y,x,col=rgb(red=0.0, green=0.0, blue=1.0, alpha=0.2),main = sprintf("%s & hb_concent",names_),
-         abline(lm(x~y)),xlab = "hb_concent",ylab = names_)
+    plot(y,x,col=rgb(red=0.0, green=0.0, blue=1.0, alpha=0.2),main = sprintf("Linear regression: %s & Haemoglobin concentration",names_), abline(lm(x~y)),xlab = "hb concentration",ylab = names_,cex.axis=2.5,cex.lab=2.5,cex.main=2.5)
   }}
+summary(relation)
 
 # DO regression over all blood measures
 for (names_ in colnames(file_cor)) {
@@ -124,11 +144,6 @@ save(PCAscores, file="DatafilePCA_noNA.RData")
 # Save altered and optimized data file
 write.csv(file_fin,'final_brain_vol_info.csv')
 
-
-
-
-
-
 # Create script to only have table entries where a images exists
 img_list <- list.files(path="../../SWI_images")
 swi_imgs <- data.frame(matrix(unlist(img_list), nrow=length(img_list), byrow=TRUE))
@@ -141,11 +156,12 @@ swi_df$ID <- as.integer(swi_df$ID)
 full_file <- read.csv("final_brain_vol_info.csv")
 View(full_file)
 
-h <- hist(full_file$hb_concent, breaks=100)
-cuts <- cut(h$breaks, c(-Inf,12.72, 13.21, 13.54, 13.86, 14.17, 14.47, 14.82, 15.21, 15.8,Inf))
+h <- hist(full_file$mean_corp_hb, breaks=100)
+cuts <- cut(h$breaks, c(-Inf,36.19667, 51.38333,Inf))
 
 # plot the histogram with the colours
-plot(h, col=c("green","red","gray","blue","orange","cyan","white","black","yellow","pink")[cuts],main="Hb concentration in 1ß percentiles")
+plot(h, col=c("green","red","blue","orange","cyan","white","black","yellow","pink")[cuts],main="Mean corp hb using min & max",
+     xlab="Mean corp hb",cex.axis=1.5, cex.lab=1.3, cex.main=1.5)
 
 #plot histogram
 y <- full_file$f.25881.2.0
@@ -158,18 +174,25 @@ hist(swi_joint$erythrocyte_dist_wdt, breaks=60)
 
 median(swi_joint$age)
 sd(swi_joint$age)
-min(swi_joint$mean_corp_hb)
-max(swi_joint$mean_corp_hb)
+min(swi_joint$hb_concent)
+max(swi_joint$hb_concent)
 table(swi_joint$sex)
 
 write.csv(swi_joint,'swi_brain_vol_info.csv')
-
-### Additional file
-full_file <- read.csv("../../UKB_brain_mri_raw/ukb51917_T2_MRIvar_filt_v3.tab", sep="\t")
-View(full_file)
-full_file <- rename(full_file,'ID' = 'f.eid')
+###Dementia file
+dementia_file <- rename(dementia_file,'ID' = 'f.eid')
+dementia_file <- rename(dementia_file,'dementia_report' = 'f.42018.0.0')
+dementia_file <- rename(dementia_file,'dementia_source' = 'f.42019.0.0')
+dementia_file <- rename(dementia_file,'ad_report' = 'f.42020.0.0')
+dementia_file <- rename(dementia_file,'ad_source' = 'f.42021.0.0')
+dementia_file[is.na(dementia_file)] <- -1
+View(dementia_file)
+### Additional file scan and negative controls
+full_file_small <- read.csv("../../UKB_brain_mri_raw/ukb51917_T2_MRIvar_filt_v3.tab", sep="\t")
+View(full_file_small)
+full_file_small <- rename(full_file_small,'ID' = 'f.eid')
 # CORRECTION FOR SCAN MEASURES
-reduce_file <- full_file %>% select("ID",
+reduce_file <- full_file_small %>% select("ID",
                                     "f.25756.2.0",	##	Scanner lateral (X) brain position	T1 structural brain MRI
                                     "f.25758.2.0",	##	Scanner longitudinal (Z) brain position	T1 structural brain MRI
                                     "f.25759.2.0",	##	Scanner table position	T1 structural brain MRI
@@ -185,14 +208,23 @@ file_fin <- rename(reduce_file, 'Scan_lat_X' = "f.25756.2.0", 'Scan_long_Z' = "f
                    'Scan_trans_Y' = "f.25757.2.0", 'T1_SWI_diff' = "f.25738.2.0", "fluid_int"="f.4990.2.0",
                    'head_vol' = "f.25000.2.0", 'hair_col' = "f.1747.2.0", 'assess_centre'='f.54.2.0')#, 'dis_to_work' = "f.769.2.0")
 swi_file <- read.csv('../swi_brain_vol_info.csv')
+
+# merge swi file and additional info
 swi_joint <- merge(x = swi_file, y = file_fin, by = "ID",x.all=TRUE)
 swi_joint <- subset(swi_joint, select = -c(X.1))
+# merge swi file and dementia info
+swi_joint <- merge(x = swi_joint, y = dementia_file, by = "ID",x.all=TRUE)
 View(swi_joint)
+
+# save new info file
 write.csv(swi_joint,'swi_brain_vol_info_additional.csv')
 swi_joint <- read.csv('swi_brain_vol_info_additional.csv')
+# check values of interest
 table(swi_joint$assess_centre)
 swi_joint$fluid_int[is.na(swi_joint$fluid_int)] <- 0
 table(swi_joint$fluid_int)
+table(swi_joint$dementia_source)
+View(swi_joint[ which(swi_joint$dementia_source != -1) ,])
 
 
 hist(swi_joint$hb_concent, breaks=100, xlab = "Hb concentration", main = "Distribution of hb concentration")
@@ -206,3 +238,22 @@ full_file <- rename(full_file,'ID' = 'f.eid')
 swi_joint <- merge(x = swi_df, y = full_file, by = "ID")
 
 table(swi_joint$sex)
+
+### Additional file cognition
+swi_file_plus <- read.csv('swi_brain_vol_info_additional.csv')
+full_file_cog <- read.csv("/home/jsammet/mnt_ox/UKB_brain_mri_raw/ukb51917_cog-demo_var_all_ver4.tab", sep="\t")
+cognition_file <- full_file_cog %>% dplyr:: select(starts_with('f.eid') | 
+                                                    starts_with('f.20016.'))
+cognition_file <- rename(cognition_file,'ID' = 'f.eid', 'fluid_int_base' = 'f.20016.0.0','fluid_int_v2' = 'f.20016.2.0')
+View(cognition_file)
+
+swi_joint_cogn <- merge(x = swi_file_plus, y = cognition_file, by = "ID",x.all=TRUE)
+swi_joint_cogn <- subset(swi_joint, select = -c(X.1))
+View(swi_joint_cogn)
+table(swi_joint_cogn$fluid_int_v2, useNA = "always")
+swi_joint_cogn$fluid_int_v2[is.na(swi_joint$fluid_int_v2)] <- -1
+table(swi_joint_cogn$fluid_int_v2, useNA = "always")
+write.csv(swi_joint_cogn,'swi_brain_vol_info_cognition.csv')
+
+swi_cogn <- read.csv('swi_brain_vol_info_cognition.csv')
+table(swi_cogn$fluid_int_v2)

@@ -7,8 +7,6 @@ import nibabel as nib
 import time
 
 from src.linear_model import receive_voxel
-from torch import nn, optim
-import torch
 from scipy import stats
 import pdb
 
@@ -18,7 +16,7 @@ def shuffle_along_axis(a, axis):
 
 def main():
     params = {
-        'iron_measure': 'hb_concent', #'Hct_percent' 'hb_concent'  'mean_corp_hb'
+        'iron_measure': 'Hct_percent', #'Hct_percent' 'hb_concent'  'mean_corp_hb'
         'image_path': '../SWI_images',
         'label_path': 'stat_analysis/swi_brain_vol_info_additional.csv'
     }
@@ -34,6 +32,7 @@ def main():
     X_t_X_inv = cp.linalg.inv(cp.matmul(cp.transpose(X_), X_))
     print(f"Nan in X_t_X_inv: {cp.any(cp.isnan(X_t_X_inv))}") 
 
+    # Create empty numpy arrays to store sub sections of newly created images within linear model
     iron_img = np.empty([256,288,48])
     shuffle_img = np.empty([256,288,48])
     pval_img = np.empty([256,288,48])
@@ -44,6 +43,12 @@ def main():
     abs_acc_img = np.empty([256,288,48])
     shuffle_acc_img = np.empty([256,288,48])
     shuffle_abs_acc_img = np.empty([256,288,48])
+
+    # create affinity matrix for nibabel to make images nicely viewable
+    img_path = os.path.join('../SWI_images', '5363743'+'_SWI.nii.gz') # using subject with biggest head volume
+    aff_img = nib.load(img_path)
+    aff_mat = aff_img.affine
+
 
     step_start_time = time.time()
     Y_full = receive_voxel(label_file.iloc[:, 0])
@@ -92,18 +97,18 @@ def main():
         
 
     print("Save beta images")
-    ni_img = nib.Nifti1Image(iron_img, affine=np.eye(4))
+    ni_img = nib.Nifti1Image(iron_img, affine=aff_mat)
     nib.save(ni_img, "results/linear/linear_model_"+params['iron_measure']+"_iron_map"+".nii")
-    ni_img = nib.Nifti1Image(age_img, affine=np.eye(4))
+    ni_img = nib.Nifti1Image(age_img, affine=aff_mat)
     nib.save(ni_img, "results/linear/linear_model_"+params['iron_measure']+"_age_map"+".nii")
-    ni_img = nib.Nifti1Image(sex_img, affine=np.eye(4))
+    ni_img = nib.Nifti1Image(sex_img, affine=aff_mat)
     nib.save(ni_img, "results/linear/linear_model_"+params['iron_measure']+"_sex_map"+".nii")
 
-    ni_img = nib.Nifti1Image(pval_img, affine=np.eye(4))
+    ni_img = nib.Nifti1Image(pval_img, affine=aff_mat)
     nib.save(ni_img, "results/linear/linear_model_"+params['iron_measure']+"_iron_pval"+".nii")
-    ni_img = nib.Nifti1Image(acc_img, affine=np.eye(4))
+    ni_img = nib.Nifti1Image(acc_img, affine=aff_mat)
     nib.save(ni_img, "results/linear/linear_model_"+params['iron_measure']+"_iron_acc"+".nii")
-    ni_img = nib.Nifti1Image(abs_acc_img, affine=np.eye(4))
+    ni_img = nib.Nifti1Image(abs_acc_img, affine=aff_mat)
     nib.save(ni_img, "results/linear/linear_model_"+params['iron_measure']+"_iron_abs_acc"+".nii")
 
     print("---------------------------------------------START SHUFFLE---------------------------------------------")
@@ -135,13 +140,13 @@ def main():
                     shuffle_acc_img[j_,k,l] = np.median(cp.asnumpy(cp.subtract(Y_[:,j,k,l],res_[:,j,k,l])))
                     shuffle_abs_acc_img[j_,k,l] = np.median(np.abs(cp.asnumpy(cp.subtract(Y_[:,j,k,l],res_[:,j,k,l]))))
     
-    ni_img = nib.Nifti1Image(shuffle_img, affine=np.eye(4))
+    ni_img = nib.Nifti1Image(shuffle_img, affine=aff_mat)
     nib.save(ni_img, "results/linear/linear_model_"+params['iron_measure']+"_shuffle_map"+".nii")
-    ni_img = nib.Nifti1Image(shuffle_pval_img, affine=np.eye(4))
+    ni_img = nib.Nifti1Image(shuffle_pval_img, affine=aff_mat)
     nib.save(ni_img, "results/linear/linear_model_"+params['iron_measure']+"_shuffle_pval"+".nii")
-    ni_img = nib.Nifti1Image(shuffle_acc_img, affine=np.eye(4))
+    ni_img = nib.Nifti1Image(shuffle_acc_img, affine=aff_mat)
     nib.save(ni_img, "results/linear/linear_model_"+params['iron_measure']+"_shuffle_acc"+".nii")
-    ni_img = nib.Nifti1Image(shuffle_abs_acc_img, affine=np.eye(4))
+    ni_img = nib.Nifti1Image(shuffle_abs_acc_img, affine=aff_mat)
     nib.save(ni_img, "results/linear/linear_model_"+params['iron_measure']+"_shuffle_abs_acc"+".nii")
     example = np.ravel(iron_img)
     np.savetxt('results/linear/iron_'+params['iron_measure']+'_beta_lin_model.csv', example, delimiter=",")

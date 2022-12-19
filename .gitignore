@@ -5,3 +5,6 @@
 *.pt
 *.out
 *.nii
+*.nii.gz
+*.RDataTmp
+*.Rhistory

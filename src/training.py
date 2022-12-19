@@ -1,4 +1,5 @@
 import os
+import warnings
 from src.swi_dataset import swi_dataset
 import torch
 import numpy as np
@@ -13,13 +14,13 @@ from torch.utils import data
 from captum.attr import GuidedGradCam, IntegratedGradients, Occlusion, LayerGradCam, NoiseTunnel
 from captum.attr._utils import visualization as viz
 from captum.attr._utils import attribution as attr_
-# Import M3d-CAM
-from medcam import medcam
+from scipy.ndimage.interpolation import rotate
+
 
 import pdb
 
 
-def trainer(model, dataset, indices, params, optimizer, criterion, scheduler, percentile_val):
+def trainer(model, dataset, indices, params, optimizer, criterion, scheduler):
     '''
     Contains
     1. split of training set into train and validation
@@ -49,14 +50,15 @@ def trainer(model, dataset, indices, params, optimizer, criterion, scheduler, pe
     for epoch in range(0, params['nb_epochs']):
         print("Epoch: {}".format(epoch))
         # save model checkpoint
-        if epoch % 20 == 0:
-            torch.save(model.state_dict(),os.path.join(params['model_dir'], str(params['nb_epochs'])+ \
-            "_"+str(params['lr'])+"_"+str(params['alpha'])+"_"+params['iron_measure']+'%04d.pt' % epoch))
+        # if epoch % 20 == 0:
+        #    torch.save(model.state_dict(),os.path.join(params['model_dir'], str(params['nb_epochs'])+ \
+        #    "_"+str(params['lr'])+"_"+str(params['alpha'])+"_"+params['iron_measure']+'%04d.pt' % epoch))
 
 
         print("---------------------------------------------START TRAINING---------------------------------------------")
         step_start_time = time.time()
         model.train()
+        dataset.flip = params['flip']
         train_loss=0.0
         # go through once
 
@@ -87,6 +89,7 @@ def trainer(model, dataset, indices, params, optimizer, criterion, scheduler, pe
         print("---------------------------------------------START VALIDATION---------------------------------------------")
         valid_loss = 0.0
         model.eval()
+        dataset.flip = False
         with torch.no_grad():
         # go thorugh one batch
             for image, label_true, label_val, name, aff_mat in val_loader:
@@ -95,7 +98,7 @@ def trainer(model, dataset, indices, params, optimizer, criterion, scheduler, pe
                 label_true = label_true.float().to(device)
                 label_pred = model(image)
                 # calculate total loss
-                loss = criterion(label_pred, label_true) #loss = criterion(label_pred.squeeze(1), label_true)
+                loss = criterion(label_pred, label_true) 
                 valid_loss += loss
 
             # Leraning Rate Scheduler
@@ -113,7 +116,7 @@ def trainer(model, dataset, indices, params, optimizer, criterion, scheduler, pe
             print(' - '.join((epoch_info, time_info)), flush=True)
 
       # final model save
-    torch.save(model.state_dict(keep_vars=True),os.path.join(params['model_dir'], str(params['nb_epochs'])+'_'+str(params['class_nb'])+'class_'+ \
+    torch.save(model.state_dict(keep_vars=True),os.path.join(params['model_dir'], "_" + str(params['model'])+ "_model_" + "flip_" +str(params['flip'])+str(params['nb_epochs'])+str(params['class_nb'])+'class_'+ \
         "_"+str(params['lr'])+"_"+str(params['alpha'])+"_"+params['iron_measure']+'final%04d.pt' % epoch))
     return model, history
 
@@ -127,6 +130,7 @@ def tester(model, dataset, indices, params,criterion):
     print("---------------------------------------------START TEST---------------------------------------------")
     test_loss = 0.0
     model.eval()
+    dataset.flip = False
     test_pred = []
     test_true = []
     test_val = []
@@ -157,7 +161,7 @@ def tester(model, dataset, indices, params,criterion):
     print(f'Final test result: \t\t Test set loss - CE Loss: {test_loss}')
 
     df = pd.DataFrame(data={"ID": list(range(len(test_pred))),"Name": test_name, "Orig. true val": test_val, "Prediction": test_pred, "True_Label": test_true})
-    df.to_csv(params['test_file']+"_"+params['activation_type']+"_"+params['iron_measure']+"_"+str(params['class_nb'])+'class_'+str(params['nb_epochs'])+ \
+    df.to_csv(params['test_file']+"_"+params['activation_type']+ "_" + str(params['model'])+ "_model_" +params['iron_measure']+"_"+str(params['class_nb'])+'class_'+str(params['nb_epochs'])+ \
         "_"+str(params['lr'])+"_"+str(params['alpha'])+".csv", sep=',',index=False)
 
     return 0
@@ -172,22 +176,21 @@ def test_saliency(model, dataset, indices, params):
     device = torch.device(params['device'])
 
     print("---------------------------------------------START SALIENCY MAP AND TEST---------------------------------------------")
-    USE_CUDA = True
-    WORLD_SIZE = 5
     model.eval()
+    dataset.flip = False
+    cnt = 0
     if params['activation_type'] == 'GuidedGradCam':
-        model = GuidedGradCam(model, model.module.lastconv, device_ids=[0, 1, 2, 3])
+        print(model.module.down6)
+        model = GuidedGradCam(model, model.module.down6[0], device_ids=[0, 1, 2, 3, 4])
     elif params['activation_type'] == 'IntegratedGradient':
         model = IntegratedGradients(model,multiply_by_inputs=True)
-    elif params['activation_type'] == 'NT_IntGrad':
+    elif params['activation_type'] == 'NT_IntGrad' or params['activation_type'] == 'flip_NT_IntGrad' or params['activation_type'] == 'NT_lowstd_IntGrad':
         model = IntegratedGradients(model,multiply_by_inputs=True)
         model = NoiseTunnel(model)
     elif params['activation_type'] == 'Occlusion':
         model = Occlusion(model)
     elif params['activation_type'] == 'LayerGradCam':
-        model = LayerGradCam(model,  model.module.lastconv, device_ids=[0, 1, 2, 3])
-    elif params['activation_type'] == 'medcam':
-        model = medcam.inject(model, backend='gcampp', layer='module.lastconv', return_attention=True) #, layer='module.lastconv'
+        model = LayerGradCam(model,  model.module.down6[0], device_ids=[0, 1, 2, 3,4])
     with torch.no_grad():
     # go through test set
         for image, label_true, label_val, name, aff_mat in test_loader:
@@ -196,33 +199,29 @@ def test_saliency(model, dataset, indices, params):
             label_true = label_true.argmax(dim=1)
             # Set the requires_grad_ to the image for retrieving gradients
             image.requires_grad_().cpu()
-            # Integrated Gradients
+            # Use Guided GradCam Algorithm
             if params['activation_type'] == 'GuidedGradCam':
-                print(f"max. value of image {np.max(image.cpu().numpy())}, max. value of image {np.min(image.cpu().numpy())} and max. value of image {np.shape(image.cpu().numpy())}")
-                attribution = model.attribute(image, target=label_true,interpolate_mode='trilinear')
+                attribution = model.attribute(image, target=label_true)
+            # Integrated Gradient
             elif params['activation_type'] == 'IntegratedGradient':
                 attribution = model.attribute(image, target=label_true, internal_batch_size=4)
-            elif params['activation_type'] == 'NT_IntGrad':
-                attribution = model.attribute(image, nt_type='smoothgrad', nt_samples=5, nt_samples_batch_size=1, internal_batch_size=6, target=label_true)
+            # Integrated Gradient with NoiseTunnel. Additional 'flip_' for augmentation and easier use without altering output files
+            elif params['activation_type'] == 'NT_IntGrad' or params['activation_type'] == 'flip_NT_IntGrad' or params['activation_type'] == 'NT_lowstd_IntGrad':
+                attribution = model.attribute(image, nt_type='smoothgrad_sq', nt_samples=10, nt_samples_batch_size=1, internal_batch_size=6, target=label_true, stdevs=20.5)
             elif params['activation_type'] == 'Occlusion':
                 attribution = model.attribute(image, target=label_true, strides=(16,16,4),sliding_window_shapes=(1,32,32,8), show_progress=True)
             elif params['activation_type'] == 'LayerGradCam':
                 attribution = model.attribute(image, target=label_true, relu_attributions=True)
-                attribution = attr_.LayerAttribution.interpolate(attribution, (1, 1, 256,288,48))
-            elif params['activation_type'] == 'medcam':
-                attribution = model(image)
-                attribution = attribution[1].squeeze(0).squeeze(0)
-                attribution = attribution.cpu().numpy()
-                print(np.any(np.isnan(attribution)))
+                attribution = attr_.LayerAttribution.interpolate(attribution, (256,288,48))
             
-            if params['activation_type'] != 'medcam':
-                attribution = create_attr_map(attribution)
-            
-            attr_img = attribution
-            #for i in range(len(label_true)):
+            # Normalize attention map and scale from 0 to 1
+            print("Create attr map")
+            attr_img = create_attr_map(attribution)
+
             ni_img = nib.Nifti1Image(attr_img, affine=aff_mat[0].cpu().numpy())
-            nib.save(ni_img, os.path.join(params['sal_maps'],params['activation_type'] + "_" + str(name.item())+"_"+params['iron_measure']+"_"+str(params['class_nb'])+"_classes"+".nii"))
-            print(f"Finished f{str(name.item())}")
+            nib.save(ni_img, os.path.join(params['sal_maps'],params['activation_type'] + "_" + str(params['model'])+ "_model_" + str(name.item())+"_"+params['iron_measure']+"_"+str(params['class_nb'])+"_classes"+".nii"))
+            cnt +=1
+            print(f"Finished {str(name.item())}, image number {cnt}")
 
     return 0
 
@@ -232,4 +231,15 @@ def create_attr_map(image, outlier_perc: Union[int, float] = 2):
     image = image.cpu().numpy()
     # _threshold = viz._cumulative_sum_threshold(np.abs(image), 100 - outlier_perc)
     # img_norm = image / _threshold
-    return viz._normalize_scale(image, viz._cumulative_sum_threshold(np.abs(image), 100 - outlier_perc))
+    return normalize_scale(image, viz._cumulative_sum_threshold(np.abs(image), 100 - outlier_perc))
+
+def normalize_scale(attr: np.ndarray, scale_factor: float):
+    assert scale_factor != 0, "Cannot normalize by scale factor = 0"
+    if abs(scale_factor) < 1e-5:
+        warnings.warn(
+            "Attempting to normalize by value approximately 0, visualized results"
+            "may be misleading. This likely means that attribution values are all"
+            "close to 0."
+        )
+    attr_norm = attr / scale_factor
+    return np.clip(attr_norm, 0, 1)
