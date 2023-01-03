@@ -1,3 +1,12 @@
+"""
+Training file of the Brain_Iron_NN.
+Provides a training function, test function and fucntion to create saliency maps
+
+Created by Joshua Sammet
+
+Last edited: 03.01.2023
+"""
+
 import os
 import warnings
 from src.swi_dataset import swi_dataset
@@ -27,6 +36,7 @@ def trainer(model, dataset, indices, params, optimizer, criterion, scheduler):
     2. Train the given model
     Returns
     1. Best performing model
+    2. Arrays with train and validation loss
     '''
     # Put device correctly
     device = torch.device(params['device'])
@@ -39,16 +49,20 @@ def trainer(model, dataset, indices, params, optimizer, criterion, scheduler):
     np.random.shuffle(indices)
     train_indices, val_indices = indices[split:], indices[:split]
 
-    # generate DataLoaders
+    # generate DataLoaders 
     train_sampler = RandomSampler(train_indices)
-    train_loader = data.DataLoader(dataset, batch_size=params['batch_size'], sampler=train_sampler, num_workers=params['num_workers'])
     val_sampler = RandomSampler(val_indices)
+    train_loader = data.DataLoader(dataset, batch_size=params['batch_size'], sampler=train_sampler, num_workers=params['num_workers'])
     val_loader = data.DataLoader(dataset, batch_size=params['batch_size'], sampler=val_sampler, num_workers=params['num_workers'])
+
+    # instantiate history dict and array for epoch timing
     history = {'train_loss': [], 'valid_loss': []}
     epoch_step_time = []
 
     for epoch in range(0, params['nb_epochs']):
         print("Epoch: {}".format(epoch))
+
+        # Save models throughout the training process
         # save model checkpoint
         # if epoch % 20 == 0:
         #    torch.save(model.state_dict(),os.path.join(params['model_dir'], str(params['nb_epochs'])+ \
@@ -58,18 +72,19 @@ def trainer(model, dataset, indices, params, optimizer, criterion, scheduler):
         print("---------------------------------------------START TRAINING---------------------------------------------")
         step_start_time = time.time()
         model.train()
+        # Initialize flip according to parameters
         dataset.flip = params['flip']
+        # Initialize loss to 0
         train_loss=0.0
-        # go through once
 
         for image, label_true, label_val, name, aff_mat in train_loader:
-
+            # Read image and label, run model
             image = image.float().to(device)
             label_true = label_true.float().to(device)
             label_pred = model(image)
             # calculate total loss
             loss = criterion(label_pred.squeeze(1), label_true)
-            # print(loss)
+            # add loss to epoch loss
             train_loss += loss
             # backpropagate and optimize
             optimizer.zero_grad()
@@ -79,96 +94,111 @@ def trainer(model, dataset, indices, params, optimizer, criterion, scheduler):
         # Print last validation results as example
         print(f'Result of last validation items (avg): \t\t True class: {label_true[-1]} \t Orig. value: {label_val[-1]} \t Prediction class: {torch.argmax(label_pred[-1]).item()}')
         print(f'Length of training set: \t\t { len(train_loader)}')
-        # get compute time
+        # compute loss
         train_loss = train_loss / len(train_loader)
         print("train_loss: ", train_loss)
-        epoch_step_time.append(time.time() - step_start_time)
         history['train_loss'].append(train_loss.item())
+
+        # Save time of epoch
+        epoch_step_time.append(time.time() - step_start_time)
 
         ### VALIDATION
         print("---------------------------------------------START VALIDATION---------------------------------------------")
-        valid_loss = 0.0
         model.eval()
+        # Initialize flip to false, only used during training!
         dataset.flip = False
+        # Initialize loss to 0
+        valid_loss = 0.0
+
         with torch.no_grad():
         # go thorugh one batch
             for image, label_true, label_val, name, aff_mat in val_loader:
-
+                # Read image and label, run model
                 image = image.float().to(device)
                 label_true = label_true.float().to(device)
                 label_pred = model(image)
-                # calculate total loss
+                # calculate loss
                 loss = criterion(label_pred, label_true) 
+                # add loss to epoch loss
                 valid_loss += loss
 
-            # Leraning Rate Scheduler
+            # Learning Rate Scheduler
             scheduler.step((valid_loss))
 
             # Print last validation results as example
-            #example_diff = torch.sum(torch.sub(label_pred,label_true)).item() / label_pred.size(dim=0)
             print(f'Result of last validation items (avg): \t\t True class: {label_true[-1]} \t Orig. value: {label_val[-1]} \t Prediction class: {label_pred[-1]}')
-            # print epoch info
+            # compute epoch loss
             valid_loss = valid_loss / len(val_loader)
             history['valid_loss'].append(valid_loss.item())
+
+            # Print the train and validation loss and epoch info
             print(f'Epoch {epoch} \t\t Training - Cross-Entropy Loss: {train_loss} \t\t Validation - CE Loss: {valid_loss}')
             epoch_info = 'Epoch %d/%d' % (epoch + 1, params['nb_epochs'])
             time_info = '%.4f sec/step' % np.mean(epoch_step_time)
             print(' - '.join((epoch_info, time_info)), flush=True)
 
-      # final model save
-    torch.save(model.state_dict(keep_vars=True),os.path.join(params['model_dir'], "_" + str(params['model'])+ "_model_" + "flip_" +str(params['flip'])+str(params['nb_epochs'])+str(params['class_nb'])+'class_'+ \
-        "_"+str(params['lr'])+"_"+str(params['alpha'])+"_"+params['iron_measure']+'final%04d.pt' % epoch))
+    # save final model
+    torch.save(model.state_dict(keep_vars=True),os.path.join(params['model_dir'], params['iron_measure'] + "_" + str(params['model'])+ "_model_" + str(params['flip']) + "_augment_" + \
+    str(params['nb_epochs']) + "_eps_" + str(params['class_nb'])+'_class_'+ str(params['lr'])+"_lr_" +params['activation_type'] + 'final%04d.pt' % epoch))
+    
     return model, history
 
 
 def tester(model, dataset, indices, params,criterion):
-    # Put model into CUDA
+    # Generate DataLoaders 
     test_sampler = RandomSampler(indices)
     test_loader = data.DataLoader(dataset, batch_size=params['batch_size'], sampler=test_sampler, num_workers=params['num_workers'])
+    # Put model onto devices - Probably unneccesary, but to be sure
     device = torch.device(params['device'])
 
     print("---------------------------------------------START TEST---------------------------------------------")
-    test_loss = 0.0
     model.eval()
+    # Initialize flip to false, it is only used during training!
     dataset.flip = False
+    # Initialize loss to 0
+    valid_loss = 0.0
+    # Create empty lists for additional info to be stored
     test_pred = []
     test_true = []
     test_val = []
     test_name = []
-    with torch.no_grad():
-    # go through test set
-        for image, label_true, label_val, name, aff_mat in test_loader:
 
+    with torch.no_grad():
+        # go through test set
+        for image, label_true, label_val, name, aff_mat in test_loader:
+            # Read image and label, run model
             image = image.float().to(device)
             label_true = label_true.float().to(device)
-
             label_pred = model(image)
+
+            # Store prediciton, correct class, original value and ID of subject
             for i in range(len(label_pred)):
                 test_pred.append(torch.argmax(label_pred[i]).item())
                 test_true.append(torch.argmax(label_true[i]).item())
                 test_val.append(label_val[i].item())
                 test_name.append(name[i].item())
-            # calculate total loss
+            # calculate loss
             loss = criterion(label_pred, label_true) #loss = criterion(label_pred.squeeze(1), label_true)
             print(loss)
+            # add loss to epoch loss
             test_loss += loss
 
     # Print last test results as example
-    # example_diff = torch.sum(torch.sub(label_pred,label_true)).item() / label_pred.size(dim=0)
     print(f'Result of last test items (avg): \t\t True class: {label_true} \t Prediction class: {torch.argmax(label_pred).item()}')
-    #print test info
+    # compute full test loss
     test_loss = test_loss / len(test_loader)
     print(f'Final test result: \t\t Test set loss - CE Loss: {test_loss}')
 
+    # Save test results
     df = pd.DataFrame(data={"ID": list(range(len(test_pred))),"Name": test_name, "Orig. true val": test_val, "Prediction": test_pred, "True_Label": test_true})
-    df.to_csv(params['test_file']+"_"+params['activation_type']+ "_" + str(params['model'])+ "_model_" +params['iron_measure']+"_"+str(params['class_nb'])+'class_'+str(params['nb_epochs'])+ \
-        "_"+str(params['lr'])+"_"+str(params['alpha'])+".csv", sep=',',index=False)
+    df.to_csv(params['test_file']+"_"+params['iron_measure'] + "_" + str(params['model'])+ "_model_" + str(params['flip']) + "_augment_" + \
+    str(params['nb_epochs']) + "_eps_" + str(params['class_nb'])+'_class_'+ str(params['lr'])+"_lr_" +params['activation_type']+".csv", sep=',',index=False)
 
     return 0
 
-def test_saliency(model, dataset, indices, params):
+def create_saliency(model, dataset, indices, params):
     """
-    Test function that incldues saliency aps based on grads
+    Function that creates attention maps, providing multiple options
     """
     # Put model into CUDA
     test_sampler = RandomSampler(indices)
@@ -177,13 +207,18 @@ def test_saliency(model, dataset, indices, params):
 
     print("---------------------------------------------START SALIENCY MAP AND TEST---------------------------------------------")
     model.eval()
+    # Initialize flip to false, it is only used during training!
     dataset.flip = False
+    # Initialize count to 0, helper variable for output
     cnt = 0
+
+    # big if-elif to choose the activtion map mode 
     if params['activation_type'] == 'GuidedGradCam':
         print(model.module.down6)
         model = GuidedGradCam(model, model.module.down6[0], device_ids=[0, 1, 2, 3, 4])
     elif params['activation_type'] == 'IntegratedGradient':
         model = IntegratedGradients(model,multiply_by_inputs=True)
+    # Integrated Gradient with NoiseTunnel, also additional parameter for additional flip
     elif params['activation_type'] == 'NT_IntGrad' or params['activation_type'] == 'flip_NT_IntGrad' or params['activation_type'] == 'NT_lowstd_IntGrad':
         model = IntegratedGradients(model,multiply_by_inputs=True)
         model = NoiseTunnel(model)
@@ -192,17 +227,18 @@ def test_saliency(model, dataset, indices, params):
     elif params['activation_type'] == 'LayerGradCam':
         model = LayerGradCam(model,  model.module.down6[0], device_ids=[0, 1, 2, 3,4])
     with torch.no_grad():
-    # go through test set
+        # go through test set to create attention maps
         for image, label_true, label_val, name, aff_mat in test_loader:
+            # load image
             image = image.float().to(device)
+            # transform label from one-hot to numerical
             label_true = label_true.float().to(device)
             label_true = label_true.argmax(dim=1)
-            # Set the requires_grad_ to the image for retrieving gradients
+            # Set the requires_grad_ for the image for retrieving gradients
             image.requires_grad_().cpu()
-            # Use Guided GradCam Algorithm
+            # if-elif to create the activtion map with the correct additional parameters 
             if params['activation_type'] == 'GuidedGradCam':
                 attribution = model.attribute(image, target=label_true)
-            # Integrated Gradient
             elif params['activation_type'] == 'IntegratedGradient':
                 attribution = model.attribute(image, target=label_true, internal_batch_size=4)
             # Integrated Gradient with NoiseTunnel. Additional 'flip_' for augmentation and easier use without altering output files
@@ -218,8 +254,11 @@ def test_saliency(model, dataset, indices, params):
             print("Create attr map")
             attr_img = create_attr_map(attribution)
 
+            # Save activation map as NIFTI
             ni_img = nib.Nifti1Image(attr_img, affine=aff_mat[0].cpu().numpy())
-            nib.save(ni_img, os.path.join(params['sal_maps'],params['activation_type'] + "_" + str(params['model'])+ "_model_" + str(name.item())+"_"+params['iron_measure']+"_"+str(params['class_nb'])+"_classes"+".nii"))
+            nib.save(ni_img, os.path.join(params['sal_maps'],params['iron_measure'] + "_" + str(params['model'])+ "_model_" + str(params['flip']) + "_augment_" + \
+                str(params['nb_epochs']) + "_eps_" + str(params['class_nb'])+'_class_'+params['activation_type']+".nii"))
+            # Increase count and print progress
             cnt +=1
             print(f"Finished {str(name.item())}, image number {cnt}")
 
@@ -233,6 +272,7 @@ def create_attr_map(image, outlier_perc: Union[int, float] = 2):
     # img_norm = image / _threshold
     return normalize_scale(image, viz._cumulative_sum_threshold(np.abs(image), 100 - outlier_perc))
 
+# Took central concepts from captum.attr.visualization.normalize_scale
 def normalize_scale(attr: np.ndarray, scale_factor: float):
     assert scale_factor != 0, "Cannot normalize by scale factor = 0"
     if abs(scale_factor) < 1e-5:

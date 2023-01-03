@@ -1,10 +1,19 @@
+"""
+Model file of the Brain_Iron_NN.
+Contains the Neural Network used by the system.
+NN based on Peng et al. (2021).
+
+Created by Joshua Sammet
+
+Last edited: 03.01.2023
+"""
 import torch
 from torch import optim, cuda, nn
 import torch.nn.functional as F
 
 
 class Conv_Block(nn.Module):
-    """(convolution => ReLU)"""
+    """(Convolution => BatchNorm => ReLU)"""
     def __init__(self, in_channels, out_channels):
         super().__init__()
         self.conv_block = nn.Sequential(
@@ -17,7 +26,7 @@ class Conv_Block(nn.Module):
         return self.conv_block(x)
 
 class Conv_Pool_Block(nn.Module):
-    """Conv then downscale with Max Pool"""
+    """(Convolution => BatchNorm => MaxPool => ReLU)"""
     def __init__(self, in_channels, out_channels):
         super().__init__()
         self.conv_block = nn.Sequential(
@@ -32,7 +41,10 @@ class Conv_Pool_Block(nn.Module):
         return x
 
 class Conv_Block_noNorm(nn.Module):
-    """(convolution => ReLU)"""
+    """
+    Conv Block without batch normlization
+    (Convolution => BatchNorm => ReLU)
+    """
     def __init__(self, in_channels, out_channels):
         super().__init__()
         self.conv_block = nn.Sequential(
@@ -44,7 +56,10 @@ class Conv_Block_noNorm(nn.Module):
         return self.conv_block(x)
 
 class Conv_Pool_Block_noNorm(nn.Module):
-    """Conv then downscale with Max Pool"""
+    """
+    Conv Block without batch normlization
+    (Convolution => BatchNorm => MaxPool => ReLU)
+    """
     def __init__(self, in_channels, out_channels):
         super().__init__()
         self.conv_block = nn.Sequential(
@@ -60,13 +75,24 @@ class Conv_Pool_Block_noNorm(nn.Module):
 
 class Iron_NN(nn.Module):
     """
-    TODO description
+    Network model containing batch norm in Conv-Blocks.
+    Consists of:
+    4 Convolution-Pooling-Layer
+    3 Convolution-Layer
+    1 DropOut
+    Reordering of elements into 1D array
+    3 FC-layers
+    Softmax activation function
+    
+    Arguments:
+    channel_num: Channel number for the different layers
+    class_nb: Number of classes to be predicted
     """
     def __init__(self, channel_num = [32, 64, 128, 256, 256, 64], class_nb=3):
 
         super().__init__()
 
-        # configure core unet model
+        # configure core model
         self.initial = Conv_Pool_Block(1, channel_num[0]) #24
         self.down1 = Conv_Pool_Block(channel_num[0], channel_num[1]) #12
         self.down2 = Conv_Pool_Block(channel_num[1], channel_num[2]) #6
@@ -78,7 +104,7 @@ class Iron_NN(nn.Module):
         self.fc1 = nn.Linear(32*14*16*1, 128)
         self.fc2 = nn.Linear(128, 64)
         self.fc3 = nn.Linear(64, class_nb)
-        self.activation = torch.nn.Sigmoid()
+        self.activation = torch.nn.Softmax()
 
     def forward(self, x):
         x1 = self.initial(x)
@@ -89,8 +115,6 @@ class Iron_NN(nn.Module):
         x6 = self.down5(x5)
         x7 = self.down6(x6)
         x8 = self.dropout(x7)
-        #x7 = self.lastconv(x6_)
-        #x7 = self.lastRELU(x7)
         x8_ = x8.view(-1, 32*14*16)
         x9 = self.fc1(x8_)
         x10 = self.fc2(x9)
@@ -99,13 +123,24 @@ class Iron_NN(nn.Module):
 
 class Iron_NN_no_batch(nn.Module):
     """
-    TODO description
+    Network model not using batch norm in Conv-Blocks.
+    Consists of:
+    4 Convolution-Pooling-Layer
+    3 Convolution-Layer
+    1 DropOut
+    Reordering of elements into 1D array
+    3 FC-layers
+    Sigmoid activation function
+    
+    Arguments:
+    channel_num: Channel number for the different layers
+    class_nb: Number of classes to be predicted
     """
     def __init__(self, channel_num = [32, 64, 128, 256, 256, 64], class_nb=3):
 
         super().__init__()
 
-        # configure core unet model
+        # configure core model
         self.initial = Conv_Pool_Block_noNorm(1, channel_num[0]) #24
         self.down1 = Conv_Pool_Block_noNorm(channel_num[0], channel_num[1]) #12
         self.down2 = Conv_Pool_Block_noNorm(channel_num[1], channel_num[2]) #6
@@ -117,7 +152,7 @@ class Iron_NN_no_batch(nn.Module):
         self.fc1 = nn.Linear(32*14*16*1, 128)
         self.fc2 = nn.Linear(128, 64)
         self.fc3 = nn.Linear(64, class_nb)
-        self.activation = torch.nn.Sigmoid()
+        self.activation = torch.nn.Softmax()
 
     def forward(self, x):
         x1 = self.initial(x)

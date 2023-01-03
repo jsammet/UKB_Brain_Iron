@@ -1,3 +1,11 @@
+"""
+Script to create attention maps for a specific subset of elements.
+This is work in progress and not yet commented or ready to run without caution.
+
+Created by Joshua Sammet
+
+Last edited: 03.01.2023
+"""
 ### Create attention maps for a given network and a given list of subjects
 import os
 import warnings

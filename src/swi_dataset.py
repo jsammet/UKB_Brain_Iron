@@ -1,3 +1,11 @@
+"""
+Dataset class of the Brain_Iron_NN.
+Provides a customized dataloading and dataset functionality
+
+Created by Joshua Sammet
+
+Last edited: 03.01.2023
+"""
 import os
 import pandas as pd
 import nibabel as nib
@@ -18,21 +26,25 @@ class swi_dataset(data.Dataset):
     """
     def __init__(self,percentile_val,params):
         '''
-        image_path: Path pointing to folder containing NifTi images
-        label_path: csv-file containg information about iron measures
+        percentile_val: Array containing boundary values of percentlies
+        params: Parameter file containg information
         '''
-        # make classes and their weights 
+
+        # ensure label file is csv
         assert params['label_path'].endswith('.csv')
+
+        # Load info file and store ID and iron value
         label_full_table = pd.read_csv(params['label_path'])
         self.label_file = label_full_table[['ID',params['iron_measure']]]
         
+        # store class number and percentile boundaries
         self.class_nb = params['class_nb']
         self.percent = percentile_val
         
-        # make image path a self var of dataset
+        # store image path a self var of dataset
         self.img_dir=params['image_path']
 
-        # parameters if images should be augmented
+        # parameter if images should be augmented
         self.flip = params['flip']
 
     def __len__(self):
@@ -43,14 +55,18 @@ class swi_dataset(data.Dataset):
         """ Randomly rotate an image by a random angle (-max_angle, max_angle).
 
         Arguments:
+        image: Image to be rotated
         max_angle: `float`. The maximum rotation angle.
 
         Returns:
         batch of rotated 3D images
         """
+        # Get iamge size and create dummy vars
         size = image.shape
         batch_rot = np.zeros(image.shape)
         angle = np.zeros(3)
+        
+        # 50% chance to rotate the image
         if bool(random.getrandbits(1)):
             image1 = image
             # rotate along z-axis
@@ -63,26 +79,37 @@ class swi_dataset(data.Dataset):
             angle[2] = random.uniform(-max_angle, max_angle)
             batch_rot = rotate(image3, angle[2], mode='nearest', axes=(1, 2), reshape=False)
         else:
+            # pass original image if no rotation
             batch_rot = image
+
         return batch_rot.reshape(size)
 
     def __getitem__(self, index):
-        'Generates one sample of data'
-        # Create image path and read image
-        #print("index of index: ", self.indices[index])
+        """Generates one sample of data
+        Arguments:
+        index: Number of element in dataset
+
+        Returns:
+        image: MRI of subject for respective index
+        label: One-hot encoded iron measure of subject for respective index
+        label_val: Original iron measure of subject for respective index
+        self.label_file.iloc[index, 0]: ID of subject for respective index
+        nifti_img.affine: affine transformation of NIFTI file of iamge (needed for activation map storage)
+        """
+        # Create image path and make image to numpy array
         img_path = os.path.join(self.img_dir, str(self.label_file.iloc[index, 0])+'_SWI.nii.gz')
         nifti_img = nib.load(img_path)
         image = np.asarray(nifti_img.get_fdata())
 
-        # rotates 50% of images with maximum angle of 10°. Returns image and angles to undo rotation
+        # rotates 50% of images with maximum angle of 10°. Returns image
         if self.flip == True:
             image = self.random_rotation_3d(image, 10)
 
+        # Expand image with a channel dimension
         image = image[np.newaxis, ...]
 
-        # Create label information accordingly
+        # Create label information in one-hot encoding
         label_val = self.label_file.iloc[index, 1]
-        #label = self.label_file.iloc[index, 1]
         label = torch.zeros(self.class_nb)
         label_idx = np.sum(label_val > self.percent)
         label[label_idx] = 1

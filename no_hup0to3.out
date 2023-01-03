@@ -1,8 +1,0 @@
-nohup: ignoring input
-hb 10
-/home/jsammet/env_swi/lib/python3.10/site-packages/torch/nn/parallel/data_parallel.py:32: UserWarning: 
-    There is an imbalance between your GPUs. You may want to exclude GPU 0 which
-    has less than 75% of the memory or cores of GPU 1. You can do so by setting
-    the device_ids argument to DataParallel, or by setting the CUDA_VISIBLE_DEVICES
-    environment variable.
-  warnings.warn(imbalance_warn.format(device_ids[min_pos], device_ids[max_pos]))

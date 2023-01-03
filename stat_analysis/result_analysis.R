@@ -15,7 +15,9 @@ max(full_file$mean_corp_hb)
 min(full_file$mean_corp_hb)
 ( ceiling(max(full_file$mean_corp_hb)) - floor(min(full_file$mean_corp_hb)) )/100
 
-results <- read.csv("/home/jsammet/mnt_ox/UKB_Brain_Iron/results/final_runs/test_final_hb_concent_3class_60_0.0001_5e-07.csv")
+results <- read.csv("/home/jsammet/mnt_ox/UKB_Brain_Iron/results/test__NT_IntGrad_hb_concent_20class_100_0.0001_5e-07.csv")
+results$True_Label[results$True_Label == 19] <- 9
+results$Prediction[results$Prediction == 19] <- 9
 View(results)
 sd(results$True_Label)
 min(results$True_Label)
@@ -105,11 +107,11 @@ mosaicplot(table(results$Prediction, results$True_Label),xlab="Prediction",ylab=
            main="Confusion Matrix prediction of Hb concentration in 3 classes ",shade = TRUE)
 
 # Plot loss
-loss <- read.csv("/home/jsammet/mnt_ox/UKB_Brain_Iron/results/train_valid_NT_IntGrad_100_20class__0.0001hb_concent.csv")
+loss <- read.csv("/home/jsammet/mnt_ox/UKB_Brain_Iron/results/train_valid_NT_IntGrad_batch_model_100_10class__0.0001hb_concent.csv")
 View(loss)
 plot(loss$ID,loss$train_loss,type = "l", lty = 1,col="red",xlab="epochs",ylab="Cross_entropy Loss",
      main="50 class: Loss for training & validation for hb concentration",
-     ylim=c(1.9,3.1),cex.lab=1.3, cex.axis=1.3, cex.main=1.5)
+     ylim=c(1.9,2.4),cex.lab=1.3, cex.axis=1.3, cex.main=1.5)
 lines(loss$ID,loss$valid,type = "l", lty = 1,col="green")
 legend(x = "topright",   # Position
        inset = 0.1, cex=1.5,
