@@ -15,7 +15,7 @@ max(full_file$mean_corp_hb)
 min(full_file$mean_corp_hb)
 ( ceiling(max(full_file$mean_corp_hb)) - floor(min(full_file$mean_corp_hb)) )/100
 
-results <- read.csv("/home/jsammet/mnt_ox/UKB_Brain_Iron/results/test__NT_IntGrad_hb_concent_20class_100_0.0001_5e-07.csv")
+results <- read.csv("/home/jsammet/mnt_ox/UKB_Brain_Iron/results/test__hb_concent_batch_model_False_augment_60_eps_3_class_0.0001_lr_NT_IntGrad_seed_1337.csv")
 results$True_Label[results$True_Label == 19] <- 9
 results$Prediction[results$Prediction == 19] <- 9
 View(results)
@@ -107,18 +107,21 @@ mosaicplot(table(results$Prediction, results$True_Label),xlab="Prediction",ylab=
            main="Confusion Matrix prediction of Hb concentration in 3 classes ",shade = TRUE)
 
 # Plot loss
-loss <- read.csv("/home/jsammet/mnt_ox/UKB_Brain_Iron/results/train_valid_NT_IntGrad_batch_model_100_10class__0.0001hb_concent.csv")
+loss <- read.csv("/home/jsammet/mnt_ox/UKB_Brain_Iron/results/train_valid__hb_concent_no_batch_model_False_augment_100_eps_3_class_0.0001_lr_NT_IntGrad.csv")
 View(loss)
-plot(loss$ID,loss$train_loss,type = "l", lty = 1,col="red",xlab="epochs",ylab="Cross_entropy Loss",
-     main="50 class: Loss for training & validation for hb concentration",
-     ylim=c(1.9,2.4),cex.lab=1.3, cex.axis=1.3, cex.main=1.5)
-lines(loss$ID,loss$valid,type = "l", lty = 1,col="green")
-legend(x = "topright",   # Position
-       inset = 0.1, cex=1.5,
-       legend = c("train loss", "valid loss"),  # Legend texts
-       lty = c(1, 1),           # Line types
-       col = c(2, 3),           # Line colors
-       lwd = 2)                 # Line width
+png("plot.png", res = 1200, width = 9, height = 6, units = "in")
+par(mar = c(4.5, 5, 2, 1))  # Adjust margin values as needed
+plot(loss$ID, loss$train_loss, type = "l", lty = 1, col = "red", xlab = "epochs", ylab = "Cross_entropy Loss",
+     main = "3 class: Loss for training & validation for hb concentration",
+     ylim = c(0.55, 1.3), cex.lab = 1.3, cex.axis = 1.3, cex.main = 1.5)
+lines(loss$ID, loss$valid, type = "l", lty = 1, col = "green")
+legend(x = "topright", inset = 0.1, cex = 1.5,
+       legend = c("train loss", "valid loss"),
+       lty = c(1, 1),
+       col = c(2, 3),
+       lwd = 2)
+dev.off()
+
 
 plot(results$True_Label,results$Orig..true.val)
 min(results[ which(results$True_Label == 0) ,]$Orig..true.val)

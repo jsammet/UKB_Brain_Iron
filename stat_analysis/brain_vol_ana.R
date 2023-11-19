@@ -52,6 +52,11 @@ file_fin <- rename(file_noNA,'ID' = 'f.eid', 'sex'='f.31.0.0','age'="f.21003.2.0
                    "scan_lat"="f.25756.2.0","scan_long"="f.25758.2.0","scan_tab"="f.25759.2.0","scan_trans"="f.25757.2.0")
 View(file_fin)
 
+# Save altered and optimized data file
+write.csv(file_fin,'final_brain_vol_info.csv')
+
+############################################START STAT ANALYSIS#############################################################################
+
 # Plot distribution of blood measures
 hist(file_fin$erythrocyte_dist_wdt, breaks=60,cex.axis=1.5,cex.lab=1.5, cex.main=1.5, xlab = "Erythrocyte distribution width", main="Histogram of Erythrocyte distribution width")
 
@@ -141,8 +146,9 @@ PCAscores <- data.frame(PCA$scores)
 PCAscores$twuid <- rownames(PCAscores)
 save(PCAscores, file="DatafilePCA_noNA.RData")
 
-# Save altered and optimized data file
-write.csv(file_fin,'final_brain_vol_info.csv')
+############################################END STAT ANALYSIS#############################################################################
+
+############################################SWI IMAGE LIST#############################################################################
 
 # Create script to only have table entries where a images exists
 img_list <- list.files(path="../../SWI_images")
@@ -156,12 +162,16 @@ swi_df$ID <- as.integer(swi_df$ID)
 full_file <- read.csv("final_brain_vol_info.csv")
 View(full_file)
 
-h <- hist(full_file$mean_corp_hb, breaks=100)
-cuts <- cut(h$breaks, c(-Inf,36.19667, 51.38333,Inf))
+h <- hist(full_file$hb_concent, breaks=100)
+perc <- quantile(full_file$hb_concent, c(0,.1, .2, .3, .4, .5, .6, .7, .8, .9, 1)) # for 10 groups
+perc <- quantile(full_file$hb_concent, c(0, 1/3, 2/3 , 1)) # for 3 groups
+cuts <- cut(h$breaks, perc)
 
 # plot the histogram with the colours
-plot(h, col=c("green","red","blue","orange","cyan","white","black","yellow","pink")[cuts],main="Mean corp hb using min & max",
-     xlab="Mean corp hb",cex.axis=1.5, cex.lab=1.3, cex.main=1.5)
+png("histo_10cl.png", res = 1200, width = 9, height = 6, units = "in")
+plot(h, col=c("green","red","blue","orange","cyan","white","black","yellow","pink","gray")[cuts],main="Hb concentration in 10 percentiles",
+     xlab="Hb concentration",cex.axis=1.5, cex.lab=1.3, cex.main=1.5)
+dev.off()
 
 #plot histogram
 y <- full_file$f.25881.2.0
@@ -179,6 +189,7 @@ max(swi_joint$hb_concent)
 table(swi_joint$sex)
 
 write.csv(swi_joint,'swi_brain_vol_info.csv')
+
 ###Dementia file
 dementia_file <- rename(dementia_file,'ID' = 'f.eid')
 dementia_file <- rename(dementia_file,'dementia_report' = 'f.42018.0.0')
@@ -187,6 +198,7 @@ dementia_file <- rename(dementia_file,'ad_report' = 'f.42020.0.0')
 dementia_file <- rename(dementia_file,'ad_source' = 'f.42021.0.0')
 dementia_file[is.na(dementia_file)] <- -1
 View(dementia_file)
+
 ### Additional file scan and negative controls
 full_file_small <- read.csv("../../UKB_brain_mri_raw/ukb51917_T2_MRIvar_filt_v3.tab", sep="\t")
 View(full_file_small)
@@ -219,6 +231,14 @@ View(swi_joint)
 # save new info file
 write.csv(swi_joint,'swi_brain_vol_info_additional.csv')
 swi_joint <- read.csv('swi_brain_vol_info_additional.csv')
+View(swi_joint)
+
+# Check age distribution of both sexes
+median(swi_joint$age[swi_joint$sex==1])
+sd(swi_joint$age[swi_joint$sex==1])
+median(swi_joint$age[swi_joint$sex==0])
+sd(swi_joint$age[swi_joint$sex==0])
+
 # check values of interest
 table(swi_joint$assess_centre)
 swi_joint$fluid_int[is.na(swi_joint$fluid_int)] <- 0
@@ -237,7 +257,6 @@ plot(y,x,abline(lm(x~y)))
 full_file <- rename(full_file,'ID' = 'f.eid')
 swi_joint <- merge(x = swi_df, y = full_file, by = "ID")
 
-table(swi_joint$sex)
 
 ### Additional file cognition
 swi_file_plus <- read.csv('swi_brain_vol_info_additional.csv')
@@ -257,3 +276,75 @@ write.csv(swi_joint_cogn,'swi_brain_vol_info_cognition.csv')
 
 swi_cogn <- read.csv('swi_brain_vol_info_cognition.csv')
 table(swi_cogn$fluid_int_v2)
+mean(swi_cogn$age)
+sd(swi_cogn$age)
+
+############################################T2* IMAGE LIST#############################################################################
+
+# Create script to only have table entries where a images exists
+img_list <- list.files(path="../../T2star_images")
+t2_imgs <- data.frame(matrix(unlist(img_list), nrow=length(img_list), byrow=TRUE))
+colnames(t2_imgs) <- c('T2star')
+t2_df <- data.frame(do.call('rbind', strsplit(as.character(t2_imgs$T2star),'_')))
+t2_df <- subset(t2_df, select = c(X1))
+colnames(t2_df) <- c('ID')
+t2_df$ID <- as.integer(t2_df$ID)
+
+# Read full data file
+full_file <- read.csv("../../UKB_brain_mri_raw/ukb51917_T2_MRIvar_RBC-IDP_all.tab", sep="\t")
+# get rid of unwanted columns for better overview
+reduce_file <- full_file %>% select('f.eid','f.31.0.0', "f.21003.2.0",
+                                    "f.30050.2.0",	##	Mean corpuscular haemoglobin
+                                    "f.30060.2.0",	##	Mean corpuscular haemoglobin concentration
+                                    "f.30040.2.0",	##	Mean corpuscular volume
+                                    "f.30030.2.0",	##	Haematocrit percentage
+                                    "f.30020.2.0",	##	Haemoglobin concentration
+                                    "f.30010.2.0",	##	Red blood cell (erythrocyte) count
+                                    "f.30070.2.0",	##	Red blood cell (erythrocyte) distribution widt
+                                  #  matches("^f.258.*.2.0$"),	##	Volume of grey matter areas
+                                  #  matches("^f.259.*.2.0$"),	##	Volume of grey matter areas
+                                  #  matches("^f.257.*.2.0$"), ##	Volume of grey matter areas
+                                  #  matches("^f.2503.*.2.0$"), ##	Median T2star areas
+                                  #  matches("^f.2502.*.2.0$"), ##	Median T2star areas
+                                  #  matches("^f.42018.*.2.0$"),
+                                    "f.25756.2.0",	##	Scanner lateral (X) brain position	T1 structural brain MRI
+                                    "f.25758.2.0",	##	Scanner longitudinal (Z) brain position	T1 structural brain MRI
+                                    "f.25759.2.0",	##	Scanner table position	T1 structural brain MRI
+                                    "f.25757.2.0",	##	Scanner transverse (Y) brain position
+                                    ) ## assessment centre
+# file_noNA <- reduce_file[complete.cases(reduce_file), ] 
+# Renaming for understandability
+file_fin <- rename(reduce_file,'ID' = 'f.eid', 'sex'='f.31.0.0','age'="f.21003.2.0","mean_corp_hb"="f.30050.2.0", "mean_corp_hb_concent"= "f.30060.2.0",
+                   "mean_corp_vol" = "f.30040.2.0", "Hct_percent"="f.30030.2.0",	"hb_concent"="f.30020.2.0", "erythrocyte_cnt"="f.30010.2.0",
+                   "erythrocyte_dist_wdt"="f.30070.2.0",
+                #   "T2star_acc_L" = "f.25038.2.0", "T2star_acc_R" = "f.25039.2.0", "T2star_amyg_L" = "f.25036.2.0",
+                #   "T2star_amyg_R" = "f.25037.2.0", "T2star_caud_L" = "f.25028.2.0", "T2star_caud_R" = "f.25029.2.0",	##	Median T2star in caudate (right)
+                #   "T2star_hipp_L" = "f.25034.2.0",	"T2star_hipp_R" = "f.25035.2.0","T2star_palli_L" = "f.25032.2.0",	##	Median T2star in pallidum (left)
+                #   "T2star_palli_R" = "f.25033.2.0", "T2star_put_L" = "f.25030.2.0",	##	Median T2star in putamen (left)
+                #   "T2star_put_R" = "f.25031.2.0", "T2star_tha_L" = "f.25026.2.0", "T2star_tha_R" = "f.25027.2.0",
+                   "scan_lat"="f.25756.2.0","scan_long"="f.25758.2.0","scan_tab"="f.25759.2.0","scan_trans"="f.25757.2.0")
+
+full_file_control <- read.csv("../../UKB_brain_mri_raw/ukb51917_T2_MRIvar_filt_v3.tab", sep="\t")
+# CORRECTION FOR SCAN MEASURES
+reduce_ctrl_file <- full_file_control %>% select("f.eid",
+                                          "f.25738.2.0",  ##  T1 SWI image difference
+                                          "f.25000.2.0",  ##  head volumne
+                                          "f.4990.2.0",   ##  fluid intelligence
+                                          ## negative controls
+                                          "f.1747.2.0",#,  ## hair colour
+                                          "f.54.2.0") ## assessment centre
+#"f.796.2.0")   ## distance to work
+file_ctrl_fin <- rename(reduce_ctrl_file, 'ID' = 'f.eid', 'T1_SWI_diff' = "f.25738.2.0", "fluid_int"="f.4990.2.0",
+                   'head_vol' = "f.25000.2.0", 'hair_col' = "f.1747.2.0", 'assess_centre'='f.54.2.0')#, 'dis_to_work' = "f.769.2.0")
+
+### Additional file cognition
+full_file_cog <- read.csv("/home/jsammet/mnt_ox/UKB_brain_mri_raw/ukb51917_cog-demo_var_all_ver4.tab", sep="\t")
+cognition_file <- full_file_cog %>% dplyr:: select(starts_with('f.eid') | 
+                                                     starts_with('f.20016.'))
+cognition_file <- rename(cognition_file,'ID' = 'f.eid', 'fluid_int_base' = 'f.20016.0.0','fluid_int_v2' = 'f.20016.2.0')
+
+t2_joint_v1 <- merge(x = t2_df, y = file_fin, by = "ID", all.x = TRUE)
+t2_joint_v2 <- merge(x = t2_joint_v1, y = file_ctrl_fin, by = "ID", all.x = TRUE)
+t2_joint <- merge(x = t2_joint_v2, y = cognition_file, by = "ID", all.x = TRUE)
+View(t2_joint)
+write.csv(t2_joint,'t2_brain_vol_info_complete.csv')

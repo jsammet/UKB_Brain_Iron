@@ -126,7 +126,7 @@ def trainer(model, dataset, indices, params, optimizer, criterion, scheduler):
             scheduler.step((valid_loss))
 
             # Print last validation results as example
-            # print(f'Result of last validation items (avg): \t\t True class: {label_true[-1]} \t Orig. value: {label_val[-1]} \t Prediction class: {label_pred[-1]}')
+            print(f'Result of last validation items (avg): \t\t True class: {label_true[-1]} \t Orig. value: {label_val[-1]} \t Prediction class: {label_pred[-1]}')
             # compute epoch loss
             valid_loss = valid_loss / len(val_loader)
             history['valid_loss'].append(valid_loss.item())
@@ -138,7 +138,7 @@ def trainer(model, dataset, indices, params, optimizer, criterion, scheduler):
             print(' - '.join((epoch_info, time_info)), flush=True)
 
     # save final model
-    torch.save(model.state_dict(keep_vars=True),os.path.join(params['model_dir'], params['iron_measure'] + "_" + str(params['model'])+ "_model_" + str(params['flip']) + "_augment_" + \
+    torch.save(model.state_dict(keep_vars=True),os.path.join(params['model_dir'],"T2_" + params['iron_measure'] + "_" + str(params['model'])+ "_model_" + str(params['flip']) + "_augment_" + \
     str(params['nb_epochs']) + "_eps_" + str(params['class_nb'])+'_class_'+ str(params['lr'])+"_lr_" +params['activation_type'] + 'final%04d.pt' % epoch))
     
     return model, history
@@ -223,7 +223,7 @@ def tester(model, dataset, indices, params,criterion):
 
     sd_ = params['seed']
     lines = [f'Results seed: {sd_}', f'Acc: {acc_}, Spec: {spec_full}, Sens: {sens_full}', f'Spec per class: {spec_cl}', f'Sens per class: {sens_cl}']
-    with open('first_acc.txt', 'a') as f:
+    with open('T2_first_acc.txt', 'a') as f:
         for line in lines:
             f.write(line)
             f.write('\n')
@@ -291,7 +291,7 @@ def create_saliency(model, dataset, indices, params):
             # Save activation map as NIFTI
             # naming: iron - model type - subject ID - augmentation - nb epochs - nb class - type of attention map
             ni_img = nib.Nifti1Image(attr_img, affine=aff_mat[0].cpu().numpy())
-            nib.save(ni_img, os.path.join(params['sal_maps'],params['iron_measure'] + "_" + str(params['model'])+ "_model_"  + str(name.item()) + "_" + str(params['flip']) + "_augment_" + \
+            nib.save(ni_img, os.path.join(params['sal_maps'],"T2_" + params['iron_measure'] + "_" + str(params['model'])+ "_model_"  + str(name.item()) + "_" + str(params['flip']) + "_augment_" + \
                 str(params['nb_epochs']) + "_eps_" + str(params['class_nb'])+'_class_'+params['activation_type']+".nii"))
             # Increase count and print progress
             cnt +=1

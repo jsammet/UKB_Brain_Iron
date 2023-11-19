@@ -18,7 +18,7 @@ from torch.utils import data
 import torch
 import pdb
 
-class swi_dataset(data.Dataset):
+class t2_dataset(data.Dataset):
     """
     Dataset class for converting the data into batches.
     The data.Dataset class is a pyTorch class which help
@@ -50,29 +50,6 @@ class swi_dataset(data.Dataset):
     def __len__(self):
         'Denotes the total number of samples'
         return len(self.label_file)
-
-    def crop_center(sefl, data):
-        """
-        Returns the center part of volume data.
-        crop: in_sp > out_sp
-        Example: 
-        data.shape = np.random.rand(182, 218, 182)
-        out_sp = (176, 208, 176)
-        data_out = crop_center(data, out_sp)
-        """
-        out_sp = (176, 208, 176)
-        in_sp = data.shape
-        nd = np.ndim(data)
-        x_crop = int((in_sp[-1] - out_sp[-1]) / 2)
-        y_crop = int((in_sp[-2] - out_sp[-2]) / 2)
-        z_crop = int((in_sp[-3] - out_sp[-3]) / 2)
-        if nd == 3:
-            data_crop = data[x_crop:-x_crop, y_crop:-y_crop, z_crop:-z_crop]
-        elif nd == 4:
-            data_crop = data[:, x_crop:-x_crop, y_crop:-y_crop, z_crop:-z_crop]
-        else:
-            raise ('Wrong dimension! dim=%d.' % nd)
-        return data_crop
 
     def random_rotation_3d(self, image, max_angle):
         """ Randomly rotate an image by a random angle (-max_angle, max_angle).
@@ -120,10 +97,9 @@ class swi_dataset(data.Dataset):
         nifti_img.affine: affine transformation of NIFTI file of image (needed for activation map storage)
         """
         # Create image path and make image to numpy array
-        img_path = os.path.join(self.img_dir, str(self.label_file.iloc[index, 0])+'_SWI_to_MNI.nii.gz')
+        img_path = os.path.join(self.img_dir, str(self.label_file.iloc[index, 0])+'_T2star.nii.gz')
         nifti_img = nib.load(img_path)
         image = np.asarray(nifti_img.get_fdata())
-        image = self.crop_center(image)
 
         # rotates 50% of images with maximum angle of 10°. Returns image
         if self.flip == True:
